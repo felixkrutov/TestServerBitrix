@@ -62,7 +62,7 @@ async def b24_hook(req: Request):
     try:
         # ИСПОЛЬЗУЕМ МОДЕЛЬ OpenAI (быстрая и недорогая)
         response = client.chat.completions.create(
-            model="o4-mini-2025-04-16",
+            model="gpt-4.1-2025-04-14",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
@@ -84,7 +84,7 @@ def update_b24_lead(lead_id, comment_text):
         "fields": {
             "ENTITY_ID": lead_id,
             "ENTITY_TYPE": "lead",
-            "COMMENT": f"Ответ от ИИ-помощника (OpenAI):\n\n{comment_text}"
+            "COMMENT": f"Ответ от ИИ-помощника Bob:\n\n{comment_text}"
         }
     }
     try:
