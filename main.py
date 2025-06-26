@@ -62,12 +62,12 @@ async def b24_hook(req: Request):
     try:
         # ИСПОЛЬЗУЕМ МОДЕЛЬ OpenAI (быстрая и недорогая)
         response = client.chat.completions.create(
-            model="o4-mini-2025-04-16",
+            model="gpt-4o",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            max_completion_tokens=500
+            max_tokens=500
         )
         ai_response_text = response.choices[0].message.content
     except Exception as e:
