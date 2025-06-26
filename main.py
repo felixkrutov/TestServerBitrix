@@ -67,7 +67,7 @@ async def b24_hook(req: Request):
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            max_tokens=500
+            max_completion_tokens=500
         )
         ai_response_text = response.choices[0].message.content
     except Exception as e:
