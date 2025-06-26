@@ -62,7 +62,7 @@ async def b24_hook(req: Request):
     try:
         # ИСПОЛЬЗУЕМ МОДЕЛЬ OpenAI (быстрая и недорогая)
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="o3-2025-04-16",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
