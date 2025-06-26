@@ -5,11 +5,13 @@ import requests
 from fastapi import FastAPI, Request, HTTPException
 
 # --- Настройки ---
+# Возвращаемся к ключу от OpenAI
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") 
 B24_WEBHOOK_URL_FOR_UPDATE = os.getenv("B24_WEBHOOK_URL_FOR_UPDATE")
 
 # --- Инициализация ---
 app = FastAPI()
+# Инициализируем клиент OpenAI
 client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
 # --- Функция для получения данных о лиде ---
@@ -54,13 +56,13 @@ async def b24_hook(req: Request):
     
     task_text = lead_data.get("COMMENTS", "Текст ТЗ не найден в комментарии лида.")
 
-    system_prompt = "Ты — ИИ-помощник для инжиниринговой компании. Твоя задача — проанализировать техническое задание клиента и подготовить краткое коммерческое предложение. Отвечай структурированно, вежливо и по делу."
-    user_prompt = f"Проанализируй следующее ТЗ и подготовь ответ для клиента: \n\n{task_text}"
+    system_prompt = "в котором ты должен сделать экспресс анализ гипотезы заказчика на предмет рыночной привлекательности продуктового направления, рассчитать параметры проекта (рассчитать или проверить площадь, оценить капекс, можно диапазон), оценить инвестиционную привлекательность и риски проекта. На основании проведенного анализа подготовь расчет по СБЦ на услуги проектирования с выделением предварительного этапа ОТР-ТЭО (СБЦ подбери на основе отрасли). В конце предложи провести ВКС <30 мин для уточнения задания и корректировки предложения. Начни ответ с обращения к Заказчику по имени (компания если есть), поблагодари за обращение. В конце задай доп вопросы для лучшего понимания и поставь подпись: С уважением, Вадим Марков Заместитель генерального директора по работе с ключевыми клиентами ООО «Мосса Инжиниринг» ‪+7 921 371-00-92‬ vadim.markov@mossaengineering.com "
+    user_prompt = f"Проанализируй следующии характиеристики клиента и подготовь ответ для клиента: \n\n{task_text}"
 
-    ai_response_text = ""
     try:
+        # ИСПОЛЬЗУЕМ МОДЕЛЬ OpenAI (быстрая и недорогая)
         response = client.chat.completions.create(
-            model="o3-mini-2025-01-31",
+            model="o4-mini-2025-04-16",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
@@ -69,22 +71,10 @@ async def b24_hook(req: Request):
         )
         ai_response_text = response.choices[0].message.content
     except Exception as e:
-        ai_response_text = f"Произошла ошибка OpenAI: {str(e)}"
+        ai_response_text = f"Ошибка при обращении к OpenAI: {str(e)}"
 
-    # --- НОВЫЙ БЛОК ДЛЯ ОТЛАДКИ ---
-    # Формируем подробный комментарий, чтобы видеть, что происходит
-    final_comment = f"""
-    <b>Текст, полученный из комментария лида:</b>
-    <hr>
-    {task_text}
-    <hr>
-    <b>Ответ от ИИ-помощника (OpenAI):</b>
-    <hr>
-    {ai_response_text if ai_response_text else "<i>[OpenAI вернул пустой ответ]</i>"}
-    """
-    
-    update_b24_lead(lead_id, final_comment)
-    
+    update_b24_lead(lead_id, ai_response_text)
+
     return {"status": "ok"}
 
 
@@ -94,8 +84,7 @@ def update_b24_lead(lead_id, comment_text):
         "fields": {
             "ENTITY_ID": lead_id,
             "ENTITY_TYPE": "lead",
-            # Мы больше не добавляем заголовок здесь, он формируется выше
-            "COMMENT": comment_text 
+            "COMMENT": f"Ответ от ИИ-помощника (OpenAI):\n\n{comment_text}"
         }
     }
     try:
@@ -105,4 +94,4 @@ def update_b24_lead(lead_id, comment_text):
 
 @app.get("/")
 def read_root():
-    return {"status": "Production-ready server is running (DEBUG MODE)"}
+    return {"status": "Production-ready server is running"}
