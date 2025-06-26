@@ -1,125 +1,122 @@
-"""
-FastAPI-webhook для Bitrix24  ➜  OpenAI  ➜  Bitrix24-таймлайн.
-
-Зависимости: см. requirements.txt
-Запуск локально:
-    uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-Render (Procfile):
-    web: uvicorn main:app --host 0.0.0.0 --port $PORT
-"""
-
-import os, re, logging, requests
+import os
+import re
+import openai
+import requests
 from fastapi import FastAPI, Request, HTTPException
-from openai import AsyncOpenAI
 
-# ───────────────────── попытка подгрузить .env (опционально) ───────────────────
-try:
-    from dotenv import load_dotenv  # если python-dotenv не установлен, просто пропустим
-    load_dotenv()
-except ModuleNotFoundError:
-    logging.warning("python-dotenv не установлен – пропускаю загрузку .env")
-
-# ─────────────────────────── переменные окружения ─────────────────────────────
-OPENAI_API_KEY            = os.getenv("OPENAI_API_KEY")
+# --- Настройки ---
+# Возвращаемся к ключу от OpenAI
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") 
 B24_WEBHOOK_URL_FOR_UPDATE = os.getenv("B24_WEBHOOK_URL_FOR_UPDATE")
 
-if not OPENAI_API_KEY or not B24_WEBHOOK_URL_FOR_UPDATE:
-    raise RuntimeError("OPENAI_API_KEY или B24_WEBHOOK_URL_FOR_UPDATE не заданы!")
+# --- Инициализация ---
+app = FastAPI()
+# Инициализируем клиент OpenAI
+client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
-# ────────────────────────── инициализация клиентов ────────────────────────────
-openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY)  # асинхронный SDK ≥ 1.14
-app = FastAPI(title="B24-GPT webhook")
-
-# ══════════════════════ вспомогательные функции ═══════════════════════════════
-
-def _b24(method: str, payload: dict) -> dict:
-    """Унифицированный POST-запрос в Bitrix24 REST-вебхук"""
+# --- Функция для получения данных о лиде ---
+def get_lead_data_from_b24(lead_id):
+    if not B24_WEBHOOK_URL_FOR_UPDATE:
+        return None
+    
+    method = "crm.lead.get"
     url = f"{B24_WEBHOOK_URL_FOR_UPDATE}/{method}"
-    r = requests.post(url, json=payload, timeout=15)
-    r.raise_for_status()
-    return r.json()
-
-def get_lead(lead_id: str) -> dict | None:
+    params = {"ID": lead_id}
+    
     try:
-        return _b24("crm.lead.get", {"ID": lead_id}).get("result")
-    except Exception as exc:
-        logging.exception("Ошибка B24 crm.lead.get: %s", exc)
+        response = requests.post(url, json=params)
+        response.raise_for_status()
+        return response.json().get("result")
+    except Exception as e:
+        print(f"Ошибка при получении данных лида {lead_id}: {e}")
         return None
 
-def add_timeline_comment(lead_id: str, text: str) -> None:
-    payload = {
+# --- Главная логика ---
+@app.post("/b24-hook")
+async def b24_hook(req: Request):
+    try:
+        form_data = await req.form()
+        document_id_str = form_data.get("document_id[2]")
+        if not document_id_str:
+             raise ValueError("document_id не найден в форме")
+        
+        match = re.search(r'\d+', document_id_str)
+        if not match:
+            raise ValueError(f"Не удалось извлечь ID из {document_id_str}")
+            
+        lead_id = match.group(0)
+
+    except Exception as e:
+        print(f"Ошибка парсинга формы от Битрикс: {e}")
+        raise HTTPException(status_code=400, detail=f"Bad form data: {e}")
+
+    lead_data = get_lead_data_from_b24(lead_id)
+    if not lead_data:
+        raise HTTPException(status_code=500, detail="Не удалось получить данные лида из Битрикс24")
+    
+    task_text = lead_data.get("COMMENTS", "Текст ТЗ не найден в комментарии лида.")
+
+    system_prompt = "Ты — инженер-сметчик.\n\
+Задача: подготовить расчёт стоимости проектных работ по СБЦ с выделением ОТР-ТЭО и оформить письмо-ответ Заказчику.\n\
+\n\
+# 1. Выбор сборника\n\
+• Пищевая промышленность → СБЦ-10 (база 01.01.2022).\n\
+• Агропром / торговля / общепит → СБЦ-11 (база 01.01.2001).\n\
+\n\
+# 2. Формулы\n\
+СБЦ-10 (кат. II, α = 6,2 %):  Cбаз = СМР×α/100;  Cкорр = Cбаз×∏Ki;  Cинд = Cкорр×1,41;  доли стадий 10/40/50.\n\
+СБЦ-11:  Cкорр = Cтабл×Kтабл×∏Ki;  Cинд = Cкорр×6,53;  доли стадий 25/30/45.\n\
+Поправочные Ki (при наличии обоснования): Kсл 1,05-1,25; Крек 1,15; Ккли 1,05-1,15; Кэт 1,05; Кподз 1,10; Ксейс 1,10-1,30; КГИОП 1,15-1,25; Ктран 1,05; Кзона 1,05; Ксроч 1,10-1,20; Ккооп 0,85-0,95; Кмасш 0,90-1,05. Авторский надзор, экспертиза, BIM → Kдоп.\n\
+\n\
+# 3. Формат ответа\n\
+1. Обращение к Заказчику по имени/компании, благодарность.\n\
+2. Таблица исходных данных.\n\
+3. Пошаговый расчёт с формулами и итогом в ценах II кв. 2025 (округлять до сотых млн ₽).\n\
+4. Стоимость ОТР-ТЭО, П, Р.\n\
+5. Предложить ВКС <30 мин для уточнения ТЗ.\n\
+6. Список уточняющих вопросов (мощность, санитария, сети, сроки и т.д.).\n\
+7. Подпись:\n\
+С уважением,\n\
+Вадим Марков\n\
+Заместитель генерального директора по работе с ключевыми клиентами\n\
+ООО «Мосса Инжиниринг»\n\
++7 921 371-00-92\n\
+vadim.markov@mossaengineering.com"
+    user_prompt = f"Проанализируй следующии характиеристики клиента и подготовь ответ для клиента: \n\n{task_text}"
+
+    try:
+        # ИСПОЛЬЗУЕМ МОДЕЛЬ OpenAI (быстрая и недорогая)
+        response = client.chat.completions.create(
+            model="o3-mini-2025-01-31",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            max_completion_tokens=5000
+        )
+        ai_response_text = response.choices[0].message.content
+    except Exception as e:
+        ai_response_text = f"Ошибка при обращении к OpenAI: {str(e)}"
+
+    update_b24_lead(lead_id, ai_response_text)
+
+    return {"status": "ok"}
+
+
+def update_b24_lead(lead_id, comment_text):
+    method = "crm.timeline.comment.add"
+    params = {
         "fields": {
             "ENTITY_ID": lead_id,
             "ENTITY_TYPE": "lead",
-            "COMMENT": f"Ответ от цифрового сотрудника Боба:\n\n{text}"
+            "COMMENT": f"Ответ от цифрового сотрудника Боба:\n\n{comment_text}"
         }
     }
     try:
-        _b24("crm.timeline.comment.add", payload)
-    except Exception as exc:
-        logging.exception("Ошибка B24 crm.timeline.comment.add: %s", exc)
-
-# ════════════════════════ шаблоны промптов ════════════════════════════════════
-
-SYSTEM_PROMPT = (
-    "Ты должен на основании проведённого анализа подготовить расчёт по СБЦ на услуги "
-    "проектирования с выделением предварительного этапа ОТР-ТЭО (СБЦ подбери по отрасли). "
-    "В конце предложи провести ВКС <30 мин. Начни ответ с обращения к Заказчику, "
-    "поблагодари за обращение. В конце задай доп-вопросы и подпись:\n"
-    "С уважением, Вадим Марков\n"
-    "Заместитель генерального директора по работе с ключевыми клиентами\n"
-    "ООО «Мосса Инжиниринг»\n+7 921 371-00-92\nvadim.markov@mossaengineering.com"
-)
-
-# ══════════════════════ HTTP-энд-пойнты ═══════════════════════════════════════
-
-@app.post("/b24-hook")
-async def b24_hook(req: Request):
-    """
-    Вебхук «новый лид»: Bitrix24 шлёт multipart/form-data,
-    вытаскиваем document_id[2] → ID лида.
-    """
-    try:
-        form = await req.form()
-        raw_id = form.get("document_id[2]")
-        if not raw_id:
-            raise ValueError("document_id[2] отсутствует")
-
-        lead_id = re.search(r"\d+", raw_id).group(0)  # first numbers
-    except Exception as exc:
-        raise HTTPException(400, f"Bad form data: {exc}") from exc
-
-    lead = get_lead(lead_id)
-    if not lead:
-        raise HTTPException(502, "Не удалось получить лид из Bitrix24")
-
-    task_text = lead.get("COMMENTS") or "Текст ТЗ отсутствует."
-
-    user_prompt = (
-        "Проанализируй характеристики клиента и подготовь письмо-ответ:\n\n"
-        f"{task_text}"
-    )
-
-    # --- обращаемся к OpenAI ---
-    try:
-        resp = await openai_client.chat.completions.create(
-            model="o3-mini-2025-01-31",
-            temperature=0,
-            max_tokens=2000,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user",   "content": user_prompt}
-            ]
-        )
-        answer = resp.choices[0].message.content
-        logging.info("OpenAI tokens used: %s", resp.usage.total_tokens)
-    except Exception as exc:
-        logging.exception("OpenAI error")
-        answer = f"Ошибка при обращении к OpenAI: {exc}"
-
-    add_timeline_comment(lead_id, answer)
-    return {"status": "ok", "lead_id": lead_id}
+        requests.post(f"{B24_WEBHOOK_URL_FOR_UPDATE}/{method}", json=params)
+    except Exception as e:
+        print(f"Ошибка при обновлении лида в Битрикс24: {e}")
 
 @app.get("/")
-def health():
-    return {"status": "running"}
+def read_root():
+    return {"status": "Production-ready server is running"}
