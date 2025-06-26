@@ -63,11 +63,14 @@ async def b24_hook(req: Request):
         # ИСПОЛЬЗУЕМ МОДЕЛЬ OpenAI (быстрая и недорогая)
         response = client.chat.completions.create(
             model="o3-mini-2025-01-31",
+            temperature=0,
+            max_tokens=2400,
+            tools=[{"type": "web-search"}],
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            max_completion_tokens=5000
+            
         )
         ai_response_text = response.choices[0].message.content
     except Exception as e:
