@@ -42,7 +42,7 @@ async def b24_hook(req: Request):
     try:
         # ИСПОЛЬЗУЕМ НОВУЮ МОДЕЛЬ ОТ GOOGLE
         response = client.chat.completions.create(
-            model="google/gemini-pro", # Указываем модель Gemini. Бесплатной "flash" может не быть, "pro" надежнее для старта
+            model="google/gemini-2.0-flash-exp:free", # Указываем модель Gemini. Бесплатной "flash" может не быть, "pro" надежнее для старта
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
