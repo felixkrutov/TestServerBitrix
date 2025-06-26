@@ -67,7 +67,7 @@ async def b24_hook(req: Request):
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            max_tokens=500
+            max_completion_tokens=500
         )
         ai_response_text = response.choices[0].message.content
     except Exception as e:
@@ -84,7 +84,7 @@ def update_b24_lead(lead_id, comment_text):
         "fields": {
             "ENTITY_ID": lead_id,
             "ENTITY_TYPE": "lead",
-            "COMMENT": f"Ответ от ИИ-помощника (OpenAI):\n\n{comment_text}"
+            "COMMENT": f"Ответ от Bob:\n\n{comment_text}"
         }
     }
     try:
