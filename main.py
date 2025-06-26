@@ -84,7 +84,7 @@ def update_b24_lead(lead_id, comment_text):
         "fields": {
             "ENTITY_ID": lead_id,
             "ENTITY_TYPE": "lead",
-            "COMMENT": f"Ответ от ИИ-помощника Bob:\n\n{comment_text}"
+            "COMMENT": f"Ответ от цифрового сотрудника Боба:\n\n{comment_text}"
         }
     }
     try:
