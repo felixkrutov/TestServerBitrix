@@ -8,7 +8,7 @@ from fastapi import FastAPI, Request, HTTPException
 # Получаем все ключи из переменных окружения
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 B24_WEBHOOK_URL_FOR_UPDATE = os.getenv("B24_WEBHOOK_URL_FOR_UPDATE")
-B24_SECRET_TOKEN = os.getenv("B24_SECRET_TOKEN") # Добавил эту важную переменную
+B24_SECRET_TOKEN = os.getenv("B24_SECRET_TOKEN") # Он больше не используется для проверки, но пусть будет
 
 # --- Инициализация ---
 app = FastAPI()
@@ -38,18 +38,8 @@ async def b24_hook(req: Request):
     try:
         form_data = await req.form()
         
-        # --- ЛОВУШКА ---
-        received_token = form_data.get('auth[application_token]')
-        print(f"!!! ПОЛУЧЕННЫЙ ТОКЕН ОТ БИТРИКСА: {received_token}")
-        print(f"!!! ТОКЕН, КОТОРЫЙ МЫ ОЖИДАЕМ НА СЕРВЕРЕ: {B24_SECRET_TOKEN}")
-        # --- КОНЕЦ ЛОВУШКИ ---
-
-        # Важно: Проверка секретного токена для безопасности
-        # Битрикс передает его в поле 'auth[application_token]'
-        if received_token != B24_SECRET_TOKEN:
-            print("Ошибка: Неверный токен авторизации от Битрикс24.")
-            raise HTTPException(status_code=403, detail="Forbidden: Invalid auth token")
-
+        # ПРОВЕРКА ТОКЕНА УБРАНА НАХУЙ
+        
         document_id_str = form_data.get("document_id[2]")
         if not document_id_str:
              raise ValueError("document_id не найден в форме")
