@@ -38,9 +38,15 @@ async def b24_hook(req: Request):
     try:
         form_data = await req.form()
         
+        # --- ЛОВУШКА ---
+        received_token = form_data.get('auth[application_token]')
+        print(f"!!! ПОЛУЧЕННЫЙ ТОКЕН ОТ БИТРИКСА: {received_token}")
+        print(f"!!! ТОКЕН, КОТОРЫЙ МЫ ОЖИДАЕМ НА СЕРВЕРЕ: {B24_SECRET_TOKEN}")
+        # --- КОНЕЦ ЛОВУШКИ ---
+
         # Важно: Проверка секретного токена для безопасности
         # Битрикс передает его в поле 'auth[application_token]'
-        if form_data.get('auth[application_token]') != B24_SECRET_TOKEN:
+        if received_token != B24_SECRET_TOKEN:
             print("Ошибка: Неверный токен авторизации от Битрикс24.")
             raise HTTPException(status_code=403, detail="Forbidden: Invalid auth token")
 
