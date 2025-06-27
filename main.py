@@ -66,13 +66,13 @@ async def b24_hook(req: Request):
     try:
         # ИСПОЛЬЗУЕМ МОДЕЛЬ OpenAI
         response = client.chat.completions.create(
-            model="gpt-3.5-turbo", # Я поменял на стандартную модель, если у тебя другая - верни свою
+            model="o4-mini", 
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            max_tokens=1500, # Уменьшил для экономии и скорости
-            temperature=0.3 # Temperature передается как отдельный параметр
+            max_tokens=2500, # Уменьшил для экономии и скорости
+            temperature=0 # Temperature передается как отдельный параметр
         )
         ai_response_text = response.choices[0].message.content
     except Exception as e:
