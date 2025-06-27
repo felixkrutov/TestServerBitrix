@@ -6,6 +6,7 @@ import subprocess
 import secrets
 from fastapi import FastAPI, Request, HTTPException, Depends, Form
 from fastapi.responses import HTMLResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
 
 # --- Общие настройки ---
