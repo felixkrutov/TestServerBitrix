@@ -96,7 +96,7 @@ async def save_settings(
     return {"status": "ok"}
 
 
-# --- Логика для Битрикс24 (старая часть, без изменений) ---
+# --- Логика для Битрикс24 ---
 
 def get_lead_data_from_b24(lead_id):
     if not B24_WEBHOOK_URL_FOR_UPDATE: return None
@@ -143,17 +143,25 @@ async def b24_hook(req: Request):
         # Можно отправить ошибку в Битрикс или просто выйти
         return {"error": "config files not found"}
 
-    user_prompt = f"Проанализируй следующии характиеристики клиента и подготовь ответ для клиента: \n\n{task_text}"
+    # Объединяем системный и пользовательский промпт в один input
+    # ПРИМЕЧАНИЕ: responses.create() API не использует разделение roles как chat.completions
+    full_input_prompt = f"{system_prompt}\n\nПроанализируй следующии характиристики клиента и подготовь ответ для клиента: \n\n{task_text}"
 
     try:
-        response = client.chat.completions.create(
+        # !!! ИСПОЛЬЗУЕМ client.responses.create ДЛЯ WEB SEARCH !!!
+        # Убедись, что выбранная модель (в current_model.txt) поддерживает web_search_preview
+        # Например: gpt-4.1, o4-mini или их search-preview версии
+        response = client.responses.create(
             model=model_name,
-            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
-            max_completion_tokens=6000
+            input=full_input_prompt,
+            tools=[{"type": "web_search_preview"}], # Включаем инструмент веб-поиска
+            # max_completion_tokens не используется в responses.create
         )
-        ai_response_text = response.choices[0].message.content
+        # Получаем итоговый текст ответа
+        ai_response_text = response.output_text
     except Exception as e:
-        ai_response_text = f"Ошибка при обращении к OpenAI: {str(e)}"
+        ai_response_text = f"Ошибка при обращении к OpenAI с web_search: {str(e)}"
+        print(ai_response_text) # Выводим ошибку для отладки
 
     update_b24_lead(lead_id, ai_response_text)
     return {"status": "ok"}
