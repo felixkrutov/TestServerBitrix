@@ -1,0 +1,15 @@
+[0;1;32m●[0m bitrix-gpt.service - Bitrix GPT Proxy Service
+     Loaded: loaded (]8;;file://mge-gpt-proxy/etc/systemd/system/bitrix-gpt.service/etc/systemd/system/bitrix-gpt.service]8;;; [0;1;32menabled[0m; preset: [0;1;32menabled[0m)
+     Active: [0;1;32mactive (running)[0m since Fri 2025-06-27 07:31:44 UTC; 5s ago
+   Main PID: 3244 (uvicorn)
+      Tasks: 1 (limit: 2311)
+     Memory: 45.0M (peak: 45.1M)
+        CPU: 1.812s
+     CGroup: /system.slice/bitrix-gpt.service
+             └─[0;38;5;245m3244 /root/TestServerBitrix/venv/bin/python3 /root/TestServerBitrix/venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000[0m
+
+Jun 27 07:31:44 mge-gpt-proxy systemd[1]: Started bitrix-gpt.service - Bitrix GPT Proxy Service.
+Jun 27 07:31:46 mge-gpt-proxy uvicorn[3244]: INFO:     Started server process [3244]
+Jun 27 07:31:46 mge-gpt-proxy uvicorn[3244]: INFO:     Waiting for application startup.
+Jun 27 07:31:46 mge-gpt-proxy uvicorn[3244]: INFO:     Application startup complete.
+Jun 27 07:31:46 mge-gpt-proxy uvicorn[3244]: INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
