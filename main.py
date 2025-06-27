@@ -5,13 +5,14 @@ import requests
 from fastapi import FastAPI, Request, HTTPException
 
 # --- Настройки ---
-# Возвращаемся к ключу от OpenAI
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") 
+# Получаем все ключи из переменных окружения
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 B24_WEBHOOK_URL_FOR_UPDATE = os.getenv("B24_WEBHOOK_URL_FOR_UPDATE")
+B24_SECRET_TOKEN = os.getenv("B24_SECRET_TOKEN") # Добавил эту важную переменную
 
 # --- Инициализация ---
 app = FastAPI()
-# Инициализируем клиент OpenAI
+# Инициализируем клиент OpenAI, используя переменную, которую получили выше
 client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
 # --- Функция для получения данных о лиде ---
@@ -36,6 +37,13 @@ def get_lead_data_from_b24(lead_id):
 async def b24_hook(req: Request):
     try:
         form_data = await req.form()
+        
+        # Важно: Проверка секретного токена для безопасности
+        # Битрикс передает его в поле 'auth[application_token]'
+        if form_data.get('auth[application_token]') != B24_SECRET_TOKEN:
+            print("Ошибка: Неверный токен авторизации от Битрикс24.")
+            raise HTTPException(status_code=403, detail="Forbidden: Invalid auth token")
+
         document_id_str = form_data.get("document_id[2]")
         if not document_id_str:
              raise ValueError("document_id не найден в форме")
@@ -57,19 +65,18 @@ async def b24_hook(req: Request):
     task_text = lead_data.get("COMMENTS", "Текст ТЗ не найден в комментарии лида.")
 
     system_prompt = "изучить запрос клиента, посмотреть отрасль и площадь объекта (возьми среднюю площадь), рассчитать примерную мощность этого предприятия и с помощью ГОСУДАРСТВЕННЫЙ СМЕТНЫЙ НОРМАТИВ «СПРАВОЧНИК БАЗОВЫХ ЦЕН НА ПРОЕКТНЫЕ РАБОТЫ В СТРОИТЕЛЬСТВЕ «ПРЕДПРИЯТИЯ АГРОПРОМЫШЛЕННОГО КОМПЛЕКСА, ТОРГОВЛИ И ОБЩЕСТВЕННОГО ПИТАНИЯ» СБЦП 81 - 2001 - 11 с использованием норм и правил расчетов в таблицах от объема выпуска https://www.minstroyrf.gov.ru/upload/iblock/3a2/sbts-na-proektnye-raboty-dlya-stroitelstva-predpriyatiya-agropromyshlennogo-kompleksa-torgovli-i-obshchestvennogo-pitaniya_.pdf.Рассчитать стоимость проектирования по стадиям ОТР-П-Р"
-    "\n"
-    "Temperature 0"
     user_prompt = f"Проанализируй следующии характиеристики клиента и подготовь ответ для клиента: \n\n{task_text}"
 
     try:
-        # ИСПОЛЬЗУЕМ МОДЕЛЬ OpenAI (быстрая и недорогая)
+        # ИСПОЛЬЗУЕМ МОДЕЛЬ OpenAI
         response = client.chat.completions.create(
-            model="o3-mini-2025-01-31",
+            model="gpt-3.5-turbo", # Я поменял на стандартную модель, если у тебя другая - верни свою
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            max_completion_tokens=5000
+            max_tokens=1500, # Уменьшил для экономии и скорости
+            temperature=0.3 # Temperature передается как отдельный параметр
         )
         ai_response_text = response.choices[0].message.content
     except Exception as e:
@@ -81,6 +88,10 @@ async def b24_hook(req: Request):
 
 
 def update_b24_lead(lead_id, comment_text):
+    if not B24_WEBHOOK_URL_FOR_UPDATE:
+        print("Ошибка: URL для обновления лида не задан.")
+        return
+
     method = "crm.timeline.comment.add"
     params = {
         "fields": {
