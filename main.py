@@ -149,7 +149,7 @@ async def b24_hook(req: Request):
         response = client.chat.completions.create(
             model=model_name,
             messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
-            max_tokens=2500, temperature=0
+            max_completion_tokens=2500, temperature=0
         )
         ai_response_text = response.choices[0].message.content
     except Exception as e:
