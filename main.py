@@ -99,25 +99,30 @@ async def save_settings(
 # --- Логика для Битрикс24 ---
 
 def get_lead_data_from_b24(lead_id):
+    print(f"DEBUG: Получение данных лида {lead_id} из Битрикс24...")
     if not B24_WEBHOOK_URL_FOR_UPDATE: return None
     try:
         response = requests.post(f"{B24_WEBHOOK_URL_FOR_UPDATE}/crm.lead.get", json={"ID": lead_id})
         response.raise_for_status()
+        print(f"DEBUG: Данные лида {lead_id} успешно получены.")
         return response.json().get("result")
     except Exception as e:
-        print(f"Ошибка при получении данных лида {lead_id}: {e}")
+        print(f"ERROR: Ошибка при получении данных лида {lead_id}: {e}")
         return None
 
 def update_b24_lead(lead_id, comment_text):
+    print(f"DEBUG: Обновление лида {lead_id} в Битрикс24...")
     if not B24_WEBHOOK_URL_FOR_UPDATE: return
     params = {"fields": {"ENTITY_ID": lead_id, "ENTITY_TYPE": "lead", "COMMENT": f"Ответ от цифрового сотрудника Николая:\n\n{comment_text}"}}
     try:
         requests.post(f"{B24_WEBHOOK_URL_FOR_UPDATE}/crm.timeline.comment.add", json=params)
+        print(f"DEBUG: Лид {lead_id} успешно обновлен.")
     except Exception as e:
-        print(f"Ошибка при обновлении лида в Битрикс24: {e}")
+        print(f"ERROR: Ошибка при обновлении лида в Битрикс24: {e}")
 
 @app.post("/b24-hook-a8xZk7pQeR1fG3hJkL")
 async def b24_hook(req: Request):
+    print("DEBUG: Запрос от Битрикс24 получен.")
     try:
         form_data = await req.form()
         document_id_str = form_data.get("document_id[2]")
@@ -125,43 +130,46 @@ async def b24_hook(req: Request):
         match = re.search(r'\d+', document_id_str)
         if not match: raise ValueError(f"Не удалось извлечь ID из {document_id_str}")
         lead_id = match.group(0)
+        print(f"DEBUG: Извлечен ID лида: {lead_id}")
     except Exception as e:
-        print(f"Ошибка парсинга формы от Битрикс: {e}")
+        print(f"ERROR: Ошибка парсинга формы от Битрикс: {e}")
         raise HTTPException(status_code=400, detail=f"Bad form data: {e}")
 
     lead_data = get_lead_data_from_b24(lead_id)
-    if not lead_data: raise HTTPException(status_code=500, detail="Не удалось получить данные лида")
+    if not lead_data: 
+        print("ERROR: Данные лида не получены, прерываем обработку.")
+        raise HTTPException(status_code=500, detail="Не удалось получить данные лида")
     
     task_text = lead_data.get("COMMENTS", "Текст ТЗ не найден.")
+    print(f"DEBUG: Текст ТЗ лида {lead_id} получен.")
 
     # Читаем промпт и модель из файлов
     try:
         with open(PROMPT_FILE, "r") as f: system_prompt = f.read().strip()
         with open(CURRENT_MODEL_FILE, "r") as f: model_name = f.read().strip()
+        print(f"DEBUG: Настройки: Модель - {model_name}, Промпт загружен.")
     except FileNotFoundError:
-        print("Ошибка: Файлы настроек prompt.txt или current_model.txt не найдены!")
-        # Можно отправить ошибку в Битрикс или просто выйти
+        print("ERROR: Ошибка: Файлы настроек prompt.txt или current_model.txt не найдены!")
         return {"error": "config files not found"}
 
-    # Объединяем системный и пользовательский промпт в один input
-    # ПРИМЕЧАНИЕ: responses.create() API не использует разделение roles как chat.completions
     full_input_prompt = f"{system_prompt}\n\nПроанализируй следующии характиристики клиента и подготовь ответ для клиента: \n\n{task_text}"
+    print("DEBUG: Запрос к ИИ сформирован. Отправка...")
 
     try:
-        # !!! ИСПОЛЬЗУЕМ client.responses.create ДЛЯ WEB SEARCH !!!
-        # Убедись, что выбранная модель (в current_model.txt) поддерживает web_search_preview
-        # Например: gpt-4.1, o4-mini или их search-preview версии
         response = client.responses.create(
             model=model_name,
             input=full_input_prompt,
-            tools=[{"type": "web_search_preview"}], # Включаем инструмент веб-поиска
-            # max_completion_tokens не используется в responses.create
+            tools=[{"type": "web_search_preview"}],
         )
-        # Получаем итоговый текст ответа
         ai_response_text = response.output_text
+        print("DEBUG: Ответ от ИИ получен.")
     except Exception as e:
         ai_response_text = f"Ошибка при обращении к OpenAI с web_search: {str(e)}"
-        print(ai_response_text) # Выводим ошибку для отладки
+        print(f"ERROR: {ai_response_text}")
+        # Если произошла ошибка с ИИ, все равно попытаемся обновить лид с сообщением об ошибке
+        update_b24_lead(lead_id, ai_response_text) 
+        return {"status": "error", "message": ai_response_text} # Возвращаем ошибку для FastAPI
 
     update_b24_lead(lead_id, ai_response_text)
+    print("DEBUG: Обработка завершена успешно.")
     return {"status": "ok"}
