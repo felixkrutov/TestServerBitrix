@@ -33,7 +33,7 @@ def get_lead_data_from_b24(lead_id):
         return None
 
 # --- Главная логика ---
-@app.post("/b24-hook")
+@app.post("/b24-hook-a8xZk7pQeR1fG3hJkL")
 async def b24_hook(req: Request):
     try:
         form_data = await req.form()
