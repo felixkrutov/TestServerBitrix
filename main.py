@@ -113,7 +113,7 @@ def get_lead_data_from_b24(lead_id):
 def update_b24_lead(lead_id, comment_text):
     print(f"DEBUG: Обновление лида {lead_id} в Битрикс24...")
     if not B24_WEBHOOK_URL_FOR_UPDATE: return
-    params = {"fields": {"ENTITY_ID": lead_id, "ENTITY_TYPE": "lead", "COMMENT": f"Ответ от цифрового сотрудника Николая:\n\n{comment_text}"}}
+    params = {"fields": {"ENTITY_ID": lead_id, "ENTITY_TYPE": "lead", "COMMENT": f":\n\n{comment_text}"}}
     try:
         requests.post(f"{B24_WEBHOOK_URL_FOR_UPDATE}/crm.timeline.comment.add", json=params)
         print(f"DEBUG: Лид {lead_id} успешно обновлен.")
