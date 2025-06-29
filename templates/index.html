@@ -134,7 +134,7 @@
                             <input type="checkbox" class="form-check-input" id="use_rag_toggle" name="use_rag" value="true">
                             <label class="form-check-label" for="use_rag_toggle">Использовать Базу Знаний (RAG)</label>
                             <!-- ИЗМЕНЕНО: Класс text-muted заменен на text-light -->
-                            <small class="form-text text-light">Нажмите сохранить чтобы внести изменения</small>
+                            <small class="form-text text-light">Нажмите кнопку сохранить чтобы внести изменения.</small>
                         </div>
                         <!-- КОНЕЦ НОВОГО ПЕРЕКЛЮЧАТЕЛЯ -->
 
@@ -298,28 +298,12 @@
             } else { throw new Error('Ошибка удаления'); }
         } catch (error) { alert(error.message); }
     }
-    sendBtn.addEventListener('click', async () => {
-        const message = userInput.value.trim();
-        if (!message) return;
-        addMessageToHistory(message, 'user');
-        userInput.value = '';
-        loadingIndicator.style.display = 'block';
-        sendBtn.disabled = true;
-        try {
-            const response = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_message: message }) });
-            if (!response.ok) { const errorData = await response.json(); throw new Error(errorData.detail || `Ошибка сервера: ${response.statusText}`); }
-            const data = await response.json();
-            addMessageToHistory(data.ai_response, 'ai');
-        } catch (error) {
-            addMessageToHistory(`Ошибка: ${error.message}`, 'ai');
-        } finally {
-            loadingIndicator.style.display = 'none';
-            sendBtn.disabled = false;
-        }
-    });
-    userInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendBtn.click(); }
-    });
+    
+    // --- Остальная логика (ПЕРЕМЕЩЕНА ВНУТРЬ window.onload) ---
+    // sendBtn, userInput, chatHistory, loadingIndicator, clearChatBtn
+    // и их addEventListener'ы будут объявлены и привязаны внутри window.onload
+    // чтобы гарантировать, что DOM полностью загружен.
+    
     async function fetchStatus() {
         const response = await fetch('/api/status');
         const data = await response.json();
@@ -340,7 +324,95 @@
         } catch (error) { logsContainer.textContent = 'Не удалось загрузить логи.'; }
     }
     
+    // ИЗМЕНЕННАЯ ФУНКЦИЯ fetchSettings
+    async function fetchSettings() {
+        const response = await fetch('/api/settings');
+        const data = await response.json();
+        document.getElementById('prompt').value = data.prompt;
+        const modelSelect = document.getElementById('model');
+        modelSelect.innerHTML = '';
+        data.models_list.forEach(modelName => {
+            const option = document.createElement('option');
+            option.value = modelName;
+            option.textContent = modelName;
+            if (modelName === data.current_model) { option.selected = true; }
+            modelSelect.appendChild(option);
+        });
+        // Установка состояния чекбокса RAG
+        document.getElementById('use_rag_toggle').checked = data.use_rag; // <-- НОВАЯ СТРОКА
+    }
+
+    document.getElementById('settingsForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        // FormData автоматически обрабатывает чекбоксы:
+        // если checked, то 'use_rag=true' будет в formData
+        // если unchecked, то 'use_rag' не будет в formData, и FastAPI Form(False) обработает это как False
+        
+        const saveStatus = document.getElementById('saveStatus');
+        saveStatus.innerHTML = '<div class="alert alert-info">Сохраняю...</div>';
+        const response = await fetch('/api/settings', { method: 'POST', body: formData });
+        const result = await response.json();
+        if (result.status === 'ok') { saveStatus.innerHTML = `<div class="alert alert-success">Настройки сохранены! Сервис перезапускается.</div>`; }
+        else { saveStatus.innerHTML = `<div class="alert alert-danger">Ошибка сохранения.</div>`; }
+        setTimeout(() => { saveStatus.innerHTML = ''; }, 5000);
+    });
+
     window.onload = () => {
+        // --- ПЕРЕМЕЩЕННЫЙ КОД ДЛЯ ЧАТА ---
+        const sendBtn = document.getElementById('send-btn');
+        const userInput = document.getElementById('user-input');
+        const chatHistory = document.getElementById('chat-history');
+        const loadingIndicator = document.getElementById('loading-indicator');
+        const clearChatBtn = document.getElementById('clearChatBtn');
+
+        clearChatBtn.addEventListener('click', () => {
+            chatHistory.innerHTML = '';
+        });
+
+        function addMessageToHistory(message, sender) {
+            const time = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+            const messageBlock = document.createElement('div');
+            messageBlock.className = `message-block ${sender}-message`;
+            
+            const messageContent = document.createElement('div');
+            messageContent.className = 'message-content';
+            messageContent.textContent = message;
+
+            const messageTime = document.createElement('div');
+            messageTime.className = 'message-time';
+            messageTime.textContent = time;
+
+            messageBlock.appendChild(messageContent);
+            messageBlock.appendChild(messageTime);
+            chatHistory.appendChild(messageBlock);
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+        }
+        
+        sendBtn.addEventListener('click', async () => {
+            const message = userInput.value.trim();
+            if (!message) return;
+            addMessageToHistory(message, 'user');
+            userInput.value = '';
+            loadingIndicator.style.display = 'block';
+            sendBtn.disabled = true;
+            try {
+                const response = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_message: message }) });
+                if (!response.ok) { const errorData = await response.json(); throw new Error(errorData.detail || `Ошибка сервера: ${response.statusText}`); }
+                const data = await response.json();
+                addMessageToHistory(data.ai_response, 'ai');
+            } catch (error) {
+                addMessageToHistory(`Ошибка: ${error.message}`, 'ai');
+            } finally {
+                loadingIndicator.style.display = 'none';
+                sendBtn.disabled = false;
+            }
+        });
+        userInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendBtn.click(); }
+        });
+        // --- КОНЕЦ ПЕРЕМЕЩЕННОГО КОДА ДЛЯ ЧАТА ---
+
         fetchStatus();
         fetchLogs();
         fetchSettings(); // Эта функция теперь загружает и состояние RAG
