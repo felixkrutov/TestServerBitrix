@@ -22,9 +22,9 @@ from langchain_community.document_loaders import (
     TextLoader,
     PyPDFLoader,
     Docx2txtLoader,
+    UnstructuredExcelLoader, # <<< ИСПРАВЛЕНИЕ
 )
-from langchain_community.document_loaders.excel import UnstructuredExcelLoader # <<< ИЗМЕНЕНИЕ
-from langchain_openai import OpenAIEmbeddings # Используем эмбеддинги от OpenAI, они качественные
+from langchain_openai import OpenAIEmbeddings
 
 # --- Общие настройки ---
 app = FastAPI()
@@ -54,11 +54,9 @@ else:
     print("WARNING: GEMINI_API_KEY не найден.")
 
 # --- RAG: База Знаний ---
-# Создаем папки, если их нет
 os.makedirs(DOCS_DIR, exist_ok=True)
 os.makedirs(DB_DIR, exist_ok=True)
 
-# Инициализируем модель для эмбеддингов и векторную базу
 embeddings = OpenAIEmbeddings(api_key=OPENAI_API_KEY)
 vectorstore = Chroma(persist_directory=DB_DIR, embedding_function=embeddings)
 text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
@@ -69,11 +67,10 @@ LOADER_MAPPING = {
     ".md": (TextLoader, {"encoding": "utf-8"}),
     ".pdf": (PyPDFLoader, {}),
     ".docx": (Docx2txtLoader, {}),
-    ".xlsx": (PandasExcelLoader, {}),
+    ".xlsx": (UnstructuredExcelLoader, {"mode": "single"}), # <<< ИСПРАВЛЕНИЕ
 }
 
 def load_and_process_document(file_path: str):
-    """Загружает и обрабатывает один документ, добавляя его в базу."""
     ext = "." + file_path.rsplit(".", 1)[-1].lower()
     if ext in LOADER_MAPPING:
         loader_class, loader_args = LOADER_MAPPING[ext]
@@ -88,8 +85,6 @@ def load_and_process_document(file_path: str):
 
 @app.on_event("startup")
 def on_startup():
-    """При старте сервера проверяем все документы в папке."""
-    # Эта функция может быть доработана для проверки уже обработанных файлов
     print("INFO: Сервер запущен. Проверка базы знаний...")
 
 @app.post("/api/upload-document")
@@ -97,7 +92,6 @@ async def upload_document(file: UploadFile = File(...), username: str = Depends(
     file_path = os.path.join(DOCS_DIR, file.filename)
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
-    
     load_and_process_document(file_path)
     return JSONResponse(content={"message": f"Файл '{file.filename}' успешно загружен и обработан."}, status_code=200)
 
@@ -111,9 +105,6 @@ async def delete_document(filename: str, username: str = Depends(get_current_use
     file_path = os.path.join(DOCS_DIR, filename)
     if os.path.exists(file_path):
         os.remove(file_path)
-        # ПРИМЕЧАНИЕ: Удаление из ChromaDB - сложный процесс.
-        # Пока мы просто удаляем файл. Для полной очистки нужно пересоздавать базу.
-        # Для простоты, мы пока оставим векторы в базе.
         print(f"INFO: Файл {filename} удален. Для полной очистки базы ее нужно пересоздать.")
         return JSONResponse(content={"message": f"Файл '{filename}' удален."}, status_code=200)
     else:
@@ -121,52 +112,28 @@ async def delete_document(filename: str, username: str = Depends(get_current_use
 
 # --- Универсальная функция для вызова ИИ (теперь с RAG) ---
 def get_ai_response(model_name: str, full_input_prompt: str, user_query: str):
-    """
-    Получает ответ от ИИ, обогащая промпт данными из векторной базы.
-    """
     print("INFO: Поиск релевантных документов в базе знаний...")
-    # Ищем 3 самых релевантных документа
     retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
     relevant_docs = retriever.get_relevant_documents(user_query)
-    
     context = "\n\n---\n\n".join([doc.page_content for doc in relevant_docs])
     
-    # Создаем новый промпт с контекстом
-    rag_prompt = f"""
-CONTEXT:
-{context}
----
-PROMPT:
-{full_input_prompt}
-
-Используя предоставленный CONTEXT, ответь на PROMPT. Если в контексте нет ответа, сообщи, что информация не найдена в базе знаний.
-"""
+    rag_prompt = f"CONTEXT:\n{context}\n---\nPROMPT:\n{full_input_prompt}\n\nИспользуя предоставленный CONTEXT, ответь на PROMPT. Если в контексте нет ответа, сообщи, что информация не найдена в базе знаний."
     
-    # --- Вариант 1: OpenAI ---
     if model_name.startswith("gpt-") or model_name.startswith("o4-"):
         print(f"INFO: Используется OpenAI API для модели {model_name}")
         if not OPENAI_API_KEY: raise ValueError("OPENAI_API_KEY не установлен.")
-        # Убираем web_search, так как теперь приоритет у нашей базы
-        response = openai_client.chat.completions.create(
-            model=model_name,
-            messages=[{"role": "system", "content": rag_prompt}]
-        )
+        response = openai_client.chat.completions.create(model=model_name, messages=[{"role": "system", "content": rag_prompt}])
         return response.choices[0].message.content
-
-    # --- Вариант 2: Gemini ---
     elif model_name.startswith("gemini-"):
         print(f"INFO: Используется Gemini API для модели {model_name}")
         if not GEMINI_API_KEY: raise ValueError("GEMINI_API_KEY не установлен.")
         model = genai.GenerativeModel(model_name)
         response = model.generate_content(rag_prompt)
         return response.text
-
-    # --- Вариант 3: Неизвестный провайдер ---
     else:
         raise ValueError(f"Ошибка: Неизвестный провайдер для модели '{model_name}'.")
 
 # --- Админка, чат и логика Битрикс24 ---
-# (Этот код использует универсальную функцию get_ai_response, поэтому он остается без изменений)
 def get_current_username(credentials: HTTPBasicCredentials = Depends(security)):
     correct_username = secrets.compare_digest(credentials.username, ADMIN_USERNAME)
     correct_password = secrets.compare_digest(credentials.password, ADMIN_PASSWORD)
@@ -212,7 +179,6 @@ async def handle_chat(chat_request: ChatRequest, username: str = Depends(get_cur
     except FileNotFoundError: return JSONResponse(status_code=500, content={"ai_response": "Ошибка: Файлы настроек не найдены."})
     full_input_prompt = f"{system_prompt}\n\nClient request:\n{chat_request.user_message}"
     try:
-        # Передаем оригинальный запрос пользователя для поиска по базе
         ai_response_text = get_ai_response(model_name, full_input_prompt, chat_request.user_message)
     except Exception as e:
         ai_response_text = f"Ошибка при обращении к ИИ ({model_name}): {str(e)}"
@@ -252,7 +218,6 @@ def process_lead_in_background(lead_id: str):
     full_input_prompt = f"{system_prompt}\n\nClient request:\n{task_text}"
     print(f"BACKGROUND: Запрос к ИИ для лида {lead_id} сформирован. Отправка...")
     try:
-        # Передаем оригинальный запрос для поиска по базе
         ai_response_text = get_ai_response(model_name, full_input_prompt, task_text)
         print(f"BACKGROUND: Ответ от ИИ для лида {lead_id} получен.")
     except Exception as e:
