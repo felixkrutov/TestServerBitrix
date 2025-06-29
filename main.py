@@ -65,7 +65,7 @@ async def get_status(username: str = Depends(get_current_username)):
 @app.get("/api/logs")
 async def get_logs(username: str = Depends(get_current_username)):
     try:
-        result = subprocess.run(["journalctl", "-u", "bitrix-gpt.service", "-n", "50", "--no-pager"], capture_output=True, text=True)
+        result = subprocess.run(["journalctl", "-u", "bitrix-gpt.service", "--since", "5 minutes ago", "--no-pager"], capture_output=True, text=True)
         logs = result.stdout
     except FileNotFoundError:
         logs = "Не удалось загрузить логи."
