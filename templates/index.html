@@ -28,14 +28,24 @@
         .tab-content > .tab-pane .card-body { min-height: 650px; } /* Одинаковая высота для всех вкладок */
 
         /* Стили для чата */
-        #chat-history { background-color: #2c3034; height: 500px; overflow-y: scroll; border: 1px solid #495057; padding: 10px; margin-bottom: 1rem; }
+        #chat-history { 
+            background-color: #2c3034; 
+            height: 500px; 
+            overflow-y: scroll; 
+            border: 1px solid #495057; 
+            padding: 10px; /* Оставляем отступ по краям для красоты */
+            margin-bottom: 1rem; 
+            display: flex; /* <-- НОВОЕ: Делаем контейнер flex-элементом */
+            flex-direction: column; /* <-- НОВОЕ: Сообщения будут располагаться вертикально */
+            gap: 0.5rem; /* <-- НОВОЕ: Добавляем отступ между сообщениями */
+        }
         
         /* Общие стили для блока сообщения */
         .message-block { 
             display: flex; 
             flex-direction: column; 
-            margin-bottom: 0.5rem; 
             max-width: 80%; /* Сообщение не будет шире 80% от ширины чата */
+            /* margin-bottom: 0.5rem; удалено, т.к. используется gap на #chat-history */
         }
         
         /* Общие стили для содержимого сообщения (самой "пузырька") */
@@ -43,30 +53,37 @@
             padding: 0.5rem 1rem; 
             border-radius: 0.5rem; 
             word-wrap: break-word; 
-            width: fit-content; /* Пузырек будет подстраиваться под ширину текста */
+            width: fit-content; /* <-- ИЗМЕНЕНО: Пузырек будет подстраиваться под ширину текста */
             max-width: 100%; /* Гарантируем, что содержимое не выйдет за пределы message-block */
+            text-align: left; /* <-- ИЗМЕНЕНО: Текст внутри пузырька всегда выравнивается влево для читаемости */
         }
         
-        .message-time { font-size: 0.75rem; color: #adb5bd; margin-top: 4px; }
+        .message-time { 
+            font-size: 0.75rem; 
+            color: #adb5bd; 
+            margin-top: 4px; 
+        }
         
         /* Стили для сообщений пользователя */
         .user-message { 
-            align-self: flex-end; /* Выравнивает весь блок сообщения вправо */
+            margin-left: auto; /* <-- НОВОЕ: Выравнивает весь блок сообщения вправо */
         }
         .user-message .message-content { 
             background-color: #0d6efd; 
-            text-align: right; /* Текст внутри пузырька выравнивается вправо */
         }
-        .user-message .message-time { text-align: right; }
+        .user-message .message-time { 
+            text-align: right; /* Время для сообщения пользователя справа */
+        }
         
         /* Стили для сообщений ИИ */
         .ai-message { 
-            align-self: flex-start; /* Выравнивает весь блок сообщения влево */
+            margin-right: auto; /* <-- НОВОЕ: Выравнивает весь блок сообщения влево */
         }
         .ai-message .message-content { 
             background-color: #495057; 
-            text-align: left; /* Текст внутри пузырька выравнивается влево */
-            white-space: pre-wrap; 
+        }
+        .ai-message .message-time { 
+            text-align: left; /* Время для сообщения ИИ слева */
         }
 
         /* Стили для Базы Знаний */
