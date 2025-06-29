@@ -22,8 +22,8 @@ from langchain_community.document_loaders import (
     TextLoader,
     PyPDFLoader,
     Docx2txtLoader,
-    PandasExcelLoader,
 )
+from langchain_excel import PandasExcelLoader # <<< ИЗМЕНЕНИЕ
 from langchain_openai import OpenAIEmbeddings # Используем эмбеддинги от OpenAI, они качественные
 
 # --- Общие настройки ---
