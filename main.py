@@ -4,12 +4,15 @@ import openai
 import requests
 import subprocess
 import secrets
-from fastapi import FastAPI, Request, HTTPException, Depends, Form
-from fastapi.responses import HTMLResponse, JSONResponse  # <<< ИЗМЕНЕНИЕ
+from fastapi import FastAPI, Request, HTTPException, Depends, Form, BackgroundTasks # <<< ИЗМЕНЕНИЕ
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel  # <<< ИЗМЕНЕНИЕ
+from pydantic import BaseModel
 
+# --- Общие настройки ---
+app = FastAPI()
+# ... (весь твой код до логики Битрикс24 без изменений) ...
 # --- Общие настройки ---
 app = FastAPI()
 security = HTTPBasic()
@@ -95,7 +98,7 @@ async def save_settings(
     return {"status": "ok"}
 
 
-# --- Тестовый чат в админке (НОВЫЙ РАЗДЕЛ) ---
+# --- Тестовый чат в админке ---
 
 class ChatRequest(BaseModel):
     user_message: str
@@ -106,17 +109,12 @@ async def handle_chat(
     username: str = Depends(get_current_username)
 ):
     try:
-        # Читаем те же настройки, что и для Битрикса
         with open(PROMPT_FILE, "r") as f: system_prompt = f.read().strip()
         with open(CURRENT_MODEL_FILE, "r") as f: model_name = f.read().strip()
     except FileNotFoundError:
         return JSONResponse(status_code=500, content={"ai_response": "Ошибка: Файлы настроек (prompt.txt или current_model.txt) не найдены."})
-
-    # Формируем промпт так же, как для Битрикса, но с сообщением из чата
     full_input_prompt = f"{system_prompt}\n\n{chat_request.user_message}"
-
     try:
-        # Вызываем ИИ с теми же параметрами
         response = client.responses.create(
             model=model_name,
             input=full_input_prompt,
@@ -125,13 +123,13 @@ async def handle_chat(
         ai_response_text = response.output_text
     except Exception as e:
         ai_response_text = f"Ошибка при обращении к OpenAI: {str(e)}"
-
     return {"ai_response": ai_response_text}
 
 
-# --- Логика для Битрикс24 ---
+# --- Логика для Битрикс24 (ПЕРЕДЕЛАНА НА АСИНХРОННУЮ) ---
 
 def get_lead_data_from_b24(lead_id):
+    # ... эта функция без изменений ...
     print(f"DEBUG: Получение данных лида {lead_id} из Битрикс24...")
     if not B24_WEBHOOK_URL_FOR_UPDATE: return None
     try:
@@ -144,6 +142,7 @@ def get_lead_data_from_b24(lead_id):
         return None
 
 def update_b24_lead(lead_id, comment_text):
+    # ... эта функция без изменений ...
     print(f"DEBUG: Обновление лида {lead_id} в Битрикс24...")
     if not B24_WEBHOOK_URL_FOR_UPDATE: return
     params = {"fields": {"ENTITY_ID": lead_id, "ENTITY_TYPE": "lead", "COMMENT": f"{comment_text}"}}
@@ -153,8 +152,53 @@ def update_b24_lead(lead_id, comment_text):
     except Exception as e:
         print(f"ERROR: Ошибка при обновлении лида в Битрикс24: {e}")
 
+# <<< НОВАЯ ФУНКЦИЯ ДЛЯ РАБОТЫ В ФОНЕ >>>
+def process_lead_in_background(lead_id: str):
+    """Эта функция будет выполняться в фоне, уже после того, как мы ответили Битриксу."""
+    print(f"BACKGROUND: Начало фоновой обработки лида {lead_id}.")
+    
+    # 1. Получаем данные лида (старая логика)
+    lead_data = get_lead_data_from_b24(lead_id)
+    if not lead_data: 
+        print(f"BACKGROUND ERROR: Не удалось получить данные лида {lead_id}, прерываем.")
+        return # Просто выходим, если не смогли получить данные
+    
+    task_text = lead_data.get("COMMENTS", "Текст ТЗ не найден.")
+    
+    # 2. Читаем настройки (старая логика)
+    try:
+        with open(PROMPT_FILE, "r") as f: system_prompt = f.read().strip()
+        with open(CURRENT_MODEL_FILE, "r") as f: model_name = f.read().strip()
+    except FileNotFoundError:
+        error_message = "Ошибка: Файлы настроек (prompt.txt или current_model.txt) не найдены!"
+        print(f"BACKGROUND ERROR: {error_message}")
+        update_b24_lead(lead_id, error_message) # Отправляем ошибку в Битрикс
+        return
+
+    full_input_prompt = f"{system_prompt}\n\nПроанализируй следующии характиристики клиента и подготовь ответ для клиента: \n\n{task_text}"
+    print(f"BACKGROUND: Запрос к ИИ для лида {lead_id} сформирован. Отправка...")
+
+    # 3. Обращаемся к OpenAI (старая логика)
+    try:
+        response = client.responses.create(
+            model=model_name,
+            input=full_input_prompt,
+            tools=[{"type": "web_search_preview"}],
+        )
+        ai_response_text = response.output_text
+        print(f"BACKGROUND: Ответ от ИИ для лида {lead_id} получен.")
+    except Exception as e:
+        ai_response_text = f"Ошибка при обращении к OpenAI с web_search: {str(e)}"
+        print(f"BACKGROUND ERROR: {ai_response_text}")
+
+    # 4. Обновляем лид в Битриксе (старая логика)
+    update_b24_lead(lead_id, ai_response_text)
+    print(f"BACKGROUND: Фоновая обработка лида {lead_id} завершена успешно.")
+
+
+# <<< ИЗМЕНЕННАЯ ФУНКЦИЯ-ХУК >>>
 @app.post("/b24-hook-a8xZk7pQeR1fG3hJkL")
-async def b24_hook(req: Request):
+async def b24_hook(req: Request, background_tasks: BackgroundTasks):
     print("DEBUG: Запрос от Битрикс24 получен.")
     try:
         form_data = await req.form()
@@ -168,39 +212,9 @@ async def b24_hook(req: Request):
         print(f"ERROR: Ошибка парсинга формы от Битрикс: {e}")
         raise HTTPException(status_code=400, detail=f"Bad form data: {e}")
 
-    lead_data = get_lead_data_from_b24(lead_id)
-    if not lead_data: 
-        print("ERROR: Данные лида не получены, прерываем обработку.")
-        raise HTTPException(status_code=500, detail="Не удалось получить данные лида")
+    # Добавляем долгую задачу в фон
+    background_tasks.add_task(process_lead_in_background, lead_id)
     
-    task_text = lead_data.get("COMMENTS", "Текст ТЗ не найден.")
-    print(f"DEBUG: Текст ТЗ лида {lead_id} получен.")
-
-    try:
-        with open(PROMPT_FILE, "r") as f: system_prompt = f.read().strip()
-        with open(CURRENT_MODEL_FILE, "r") as f: model_name = f.read().strip()
-        print(f"DEBUG: Настройки: Модель - {model_name}, Промпт загружен.")
-    except FileNotFoundError:
-        print("ERROR: Ошибка: Файлы настроек prompt.txt или current_model.txt не найдены!")
-        return {"error": "config files not found"}
-
-    full_input_prompt = f"{system_prompt}\n\nПроанализируй следующии характиристики клиента и подготовь ответ для клиента: \n\n{task_text}"
-    print("DEBUG: Запрос к ИИ сформирован. Отправка...")
-
-    try:
-        response = client.responses.create(
-            model=model_name,
-            input=full_input_prompt,
-            tools=[{"type": "web_search_preview"}],
-        )
-        ai_response_text = response.output_text
-        print("DEBUG: Ответ от ИИ получен.")
-    except Exception as e:
-        ai_response_text = f"Ошибка при обращении к OpenAI с web_search: {str(e)}"
-        print(f"ERROR: {ai_response_text}")
-        update_b24_lead(lead_id, ai_response_text) 
-        return {"status": "error", "message": ai_response_text}
-
-    update_b24_lead(lead_id, ai_response_text)
-    print("DEBUG: Обработка завершена успешно.")
-    return {"status": "ok"}
+    # И СРАЗУ ЖЕ отвечаем Битриксу, что все хорошо
+    print(f"DEBUG: Задача для лида {lead_id} добавлена в фон. Мгновенно отвечаем Битрикс24.")
+    return {"status": "ok, task accepted"}
