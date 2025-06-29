@@ -21,7 +21,6 @@
         .status-fail { background-color: #dc3545; }
         #logs { background-color: #1a1a1a; color: #f8f9fa; font-family: monospace; white-space: pre-wrap; height: 400px; overflow-y: scroll; border: 1px solid #495057; }
         
-        /* Стили для нового чата */
         #chat-history {
             background-color: #2c3034;
             height: 400px;
@@ -36,6 +35,7 @@
             border-radius: 0.5rem;
             max-width: 80%;
             word-wrap: break-word;
+            width: fit-content; /* <<< ИЗМЕНЕНИЕ ЗДЕСЬ */
         }
         .user-message {
             background-color: #0d6efd;
@@ -46,7 +46,7 @@
             background-color: #495057;
             margin-right: auto;
             text-align: left;
-            white-space: pre-wrap; /* Сохраняет переносы строк от ИИ */
+            white-space: pre-wrap;
         }
     </style>
 </head>
@@ -64,7 +64,7 @@
             </div>
         </div>
 
-        <!-- Тестовый чат (НОВЫЙ БЛОК) -->
+        <!-- Тестовый чат -->
         <div class="card mb-4">
             <div class="card-header">Тестовый чат для отладки промптов</div>
             <div class="card-body">
@@ -103,13 +103,7 @@
     </div>
 
 <script>
-    // --- Старая логика ---
-    async function fetchStatus() { /* ... без изменений ... */ }
-    async function fetchLogs() { /* ... без изменений ... */ }
-    async function fetchSettings() { /* ... без изменений ... */ }
-    document.getElementById('settingsForm').addEventListener('submit', async function(e) { /* ... без изменений ... */ });
-
-    // --- НОВАЯ ЛОГИКА ДЛЯ ЧАТА ---
+    // --- Логика чата ---
     const sendBtn = document.getElementById('send-btn');
     const userInput = document.getElementById('user-input');
     const chatHistory = document.getElementById('chat-history');
@@ -120,18 +114,16 @@
         p.className = sender === 'user' ? 'user-message' : 'ai-message';
         p.textContent = message;
         chatHistory.appendChild(p);
-        chatHistory.scrollTop = chatHistory.scrollHeight; // Автопрокрутка вниз
+        chatHistory.scrollTop = chatHistory.scrollHeight;
     }
 
     sendBtn.addEventListener('click', async () => {
         const message = userInput.value.trim();
         if (!message) return;
-
         addMessageToHistory(message, 'user');
         userInput.value = '';
         loadingIndicator.style.display = 'block';
         sendBtn.disabled = true;
-
         try {
             const response = await fetch('/api/chat', {
                 method: 'POST',
@@ -151,8 +143,8 @@
             sendBtn.disabled = false;
         }
     });
-    
-    // --- Полный код для старых функций (скопируй их) ---
+
+    // --- Остальная логика ---
     async function fetchStatus() {
         const response = await fetch('/api/status');
         const data = await response.json();
@@ -196,13 +188,11 @@
         const formData = new FormData(this);
         const saveStatus = document.getElementById('saveStatus');
         saveStatus.innerHTML = '<div class="alert alert-info">Сохраняю...</div>';
-
         const response = await fetch('/api/settings', {
             method: 'POST',
             body: formData
         });
         const result = await response.json();
-        
         if (result.status === 'ok') {
             saveStatus.innerHTML = '<div class="alert alert-success">Настройки сохранены! Сервис перезапускается.</div>';
         } else {
@@ -211,7 +201,6 @@
         setTimeout(() => { saveStatus.innerHTML = ''; }, 5000);
     });
 
-    // Первоначальная загрузка данных
     window.onload = () => {
         fetchStatus();
         fetchLogs();
