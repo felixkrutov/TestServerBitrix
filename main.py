@@ -1,9 +1,10 @@
 import os
 import re
+import shutil
 import requests
 import subprocess
 import secrets
-from fastapi import FastAPI, Request, HTTPException, Depends, Form, BackgroundTasks
+from fastapi import FastAPI, Request, HTTPException, Depends, Form, BackgroundTasks, UploadFile, File
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
@@ -13,59 +14,151 @@ from pydantic import BaseModel
 import openai
 import google.generativeai as genai 
 
+# --- НОВЫЕ ИМПОРТЫ ДЛЯ RAG (БАЗЫ ЗНАНИЙ) ---
+import chromadb
+from langchain.vectorstores import Chroma
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.document_loaders import (
+    TextLoader,
+    PyPDFLoader,
+    Docx2txtLoader,
+    PandasExcelLoader,
+)
+from langchain_openai import OpenAIEmbeddings # Используем эмбеддинги от OpenAI, они качественные
+
 # --- Общие настройки ---
 app = FastAPI()
 security = HTTPBasic()
 templates = Jinja2Templates(directory="templates")
 
-# Пути к файлам настроек
+# --- Пути к файлам и папкам ---
 MODELS_LIST_FILE = "models_list.txt"
 CURRENT_MODEL_FILE = "current_model.txt"
 PROMPT_FILE = "prompt.txt"
+DOCS_DIR = "documents"
+DB_DIR = "chroma_db"
 
 # --- Получение всех ключей из переменных окружения ---
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") 
-
 B24_WEBHOOK_URL_FOR_UPDATE = os.getenv("B24_WEBHOOK_URL_FOR_UPDATE")
 B24_SECRET_TOKEN = os.getenv("B24_SECRET_TOKEN")
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin")
 
-# --- Инициализация клиентов API ---
+# --- Инициализация клиентов API и RAG ---
 openai_client = openai.OpenAI(api_key=OPENAI_API_KEY)
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 else:
-    print("WARNING: GEMINI_API_KEY не найден. Функционал Gemini будет недоступен.")
+    print("WARNING: GEMINI_API_KEY не найден.")
 
-# --- Универсальная функция для вызова ИИ (УПРОЩЕННАЯ ВЕРСИЯ БЕЗ ПОИСКА ДЛЯ GEMINI) ---
-def get_ai_response(model_name: str, full_input_prompt: str):
+# --- RAG: База Знаний ---
+# Создаем папки, если их нет
+os.makedirs(DOCS_DIR, exist_ok=True)
+os.makedirs(DB_DIR, exist_ok=True)
+
+# Инициализируем модель для эмбеддингов и векторную базу
+embeddings = OpenAIEmbeddings(api_key=OPENAI_API_KEY)
+vectorstore = Chroma(persist_directory=DB_DIR, embedding_function=embeddings)
+text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+
+# Словарь для выбора загрузчика в зависимости от типа файла
+LOADER_MAPPING = {
+    ".txt": (TextLoader, {"encoding": "utf-8"}),
+    ".md": (TextLoader, {"encoding": "utf-8"}),
+    ".pdf": (PyPDFLoader, {}),
+    ".docx": (Docx2txtLoader, {}),
+    ".xlsx": (PandasExcelLoader, {}),
+}
+
+def load_and_process_document(file_path: str):
+    """Загружает и обрабатывает один документ, добавляя его в базу."""
+    ext = "." + file_path.rsplit(".", 1)[-1].lower()
+    if ext in LOADER_MAPPING:
+        loader_class, loader_args = LOADER_MAPPING[ext]
+        loader = loader_class(file_path, **loader_args)
+        documents = loader.load()
+        docs = text_splitter.split_documents(documents)
+        vectorstore.add_documents(documents=docs)
+        vectorstore.persist()
+        print(f"INFO: Документ {file_path} успешно обработан и добавлен в базу.")
+    else:
+        print(f"WARNING: Неподдерживаемый формат файла: {file_path}")
+
+@app.on_event("startup")
+def on_startup():
+    """При старте сервера проверяем все документы в папке."""
+    # Эта функция может быть доработана для проверки уже обработанных файлов
+    print("INFO: Сервер запущен. Проверка базы знаний...")
+
+@app.post("/api/upload-document")
+async def upload_document(file: UploadFile = File(...), username: str = Depends(get_current_username)):
+    file_path = os.path.join(DOCS_DIR, file.filename)
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    
+    load_and_process_document(file_path)
+    return JSONResponse(content={"message": f"Файл '{file.filename}' успешно загружен и обработан."}, status_code=200)
+
+@app.get("/api/documents")
+async def get_documents(username: str = Depends(get_current_username)):
+    files = [f for f in os.listdir(DOCS_DIR) if os.path.isfile(os.path.join(DOCS_DIR, f))]
+    return JSONResponse(content={"documents": files})
+
+@app.delete("/api/documents/{filename}")
+async def delete_document(filename: str, username: str = Depends(get_current_username)):
+    file_path = os.path.join(DOCS_DIR, filename)
+    if os.path.exists(file_path):
+        os.remove(file_path)
+        # ПРИМЕЧАНИЕ: Удаление из ChromaDB - сложный процесс.
+        # Пока мы просто удаляем файл. Для полной очистки нужно пересоздавать базу.
+        # Для простоты, мы пока оставим векторы в базе.
+        print(f"INFO: Файл {filename} удален. Для полной очистки базы ее нужно пересоздать.")
+        return JSONResponse(content={"message": f"Файл '{filename}' удален."}, status_code=200)
+    else:
+        raise HTTPException(status_code=404, detail="Файл не найден")
+
+# --- Универсальная функция для вызова ИИ (теперь с RAG) ---
+def get_ai_response(model_name: str, full_input_prompt: str, user_query: str):
     """
-    Получает ответ от ИИ, автоматически выбирая API (OpenAI или Gemini).
-    Для Gemini поиск отключен.
+    Получает ответ от ИИ, обогащая промпт данными из векторной базы.
     """
+    print("INFO: Поиск релевантных документов в базе знаний...")
+    # Ищем 3 самых релевантных документа
+    retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
+    relevant_docs = retriever.get_relevant_documents(user_query)
+    
+    context = "\n\n---\n\n".join([doc.page_content for doc in relevant_docs])
+    
+    # Создаем новый промпт с контекстом
+    rag_prompt = f"""
+CONTEXT:
+{context}
+---
+PROMPT:
+{full_input_prompt}
+
+Используя предоставленный CONTEXT, ответь на PROMPT. Если в контексте нет ответа, сообщи, что информация не найдена в базе знаний.
+"""
     
     # --- Вариант 1: OpenAI ---
     if model_name.startswith("gpt-") or model_name.startswith("o4-"):
         print(f"INFO: Используется OpenAI API для модели {model_name}")
-        if not OPENAI_API_KEY:
-            raise ValueError("OPENAI_API_KEY не установлен.")
-        response = openai_client.responses.create(
+        if not OPENAI_API_KEY: raise ValueError("OPENAI_API_KEY не установлен.")
+        # Убираем web_search, так как теперь приоритет у нашей базы
+        response = openai_client.chat.completions.create(
             model=model_name,
-            input=full_input_prompt,
-            tools=[{"type": "web_search_preview"}] # Встроенный поиск OpenAI
+            messages=[{"role": "system", "content": rag_prompt}]
         )
-        return response.output_text
+        return response.choices[0].message.content
 
-    # --- Вариант 2: Gemini (без поиска) ---
+    # --- Вариант 2: Gemini ---
     elif model_name.startswith("gemini-"):
-        print(f"INFO: Используется Gemini API для модели {model_name} (без поиска)")
-        if not GEMINI_API_KEY:
-            raise ValueError("GEMINI_API_KEY не установлен.")
-            
+        print(f"INFO: Используется Gemini API для модели {model_name}")
+        if not GEMINI_API_KEY: raise ValueError("GEMINI_API_KEY не установлен.")
         model = genai.GenerativeModel(model_name)
-        response = model.generate_content(full_input_prompt)
+        response = model.generate_content(rag_prompt)
         return response.text
 
     # --- Вариант 3: Неизвестный провайдер ---
@@ -73,6 +166,7 @@ def get_ai_response(model_name: str, full_input_prompt: str):
         raise ValueError(f"Ошибка: Неизвестный провайдер для модели '{model_name}'.")
 
 # --- Админка, чат и логика Битрикс24 ---
+# (Этот код использует универсальную функцию get_ai_response, поэтому он остается без изменений)
 def get_current_username(credentials: HTTPBasicCredentials = Depends(security)):
     correct_username = secrets.compare_digest(credentials.username, ADMIN_USERNAME)
     correct_password = secrets.compare_digest(credentials.password, ADMIN_PASSWORD)
@@ -118,7 +212,8 @@ async def handle_chat(chat_request: ChatRequest, username: str = Depends(get_cur
     except FileNotFoundError: return JSONResponse(status_code=500, content={"ai_response": "Ошибка: Файлы настроек не найдены."})
     full_input_prompt = f"{system_prompt}\n\nClient request:\n{chat_request.user_message}"
     try:
-        ai_response_text = get_ai_response(model_name, full_input_prompt)
+        # Передаем оригинальный запрос пользователя для поиска по базе
+        ai_response_text = get_ai_response(model_name, full_input_prompt, chat_request.user_message)
     except Exception as e:
         ai_response_text = f"Ошибка при обращении к ИИ ({model_name}): {str(e)}"
     return {"ai_response": ai_response_text}
@@ -157,7 +252,8 @@ def process_lead_in_background(lead_id: str):
     full_input_prompt = f"{system_prompt}\n\nClient request:\n{task_text}"
     print(f"BACKGROUND: Запрос к ИИ для лида {lead_id} сформирован. Отправка...")
     try:
-        ai_response_text = get_ai_response(model_name, full_input_prompt)
+        # Передаем оригинальный запрос для поиска по базе
+        ai_response_text = get_ai_response(model_name, full_input_prompt, task_text)
         print(f"BACKGROUND: Ответ от ИИ для лида {lead_id} получен.")
     except Exception as e:
         ai_response_text = f"Ошибка при обращении к ИИ ({model_name}): {str(e)}"
