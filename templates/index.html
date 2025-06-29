@@ -27,69 +27,34 @@
         .nav-tabs .nav-link.active { background-color: #495057; border-color: #495057; }
         .tab-content > .tab-pane .card-body { min-height: 650px; } /* Одинаковая высота для всех вкладок */
 
-        /* Стили для чата */
-        #chat-history { 
-            background-color: #2c3034; 
-            height: 500px; 
-            overflow-y: scroll; 
-            border: 1px solid #495057; 
-            padding: 10px; /* Оставляем отступ по краям для красоты */
-            margin-bottom: 1rem; 
-            display: flex; /* <-- НОВОЕ: Делаем контейнер flex-элементом */
-            flex-direction: column; /* <-- НОВОЕ: Сообщения будут располагаться вертикально */
-            gap: 0.5rem; /* <-- НОВОЕ: Добавляем отступ между сообщениями */
-        }
-        
-        /* Общие стили для блока сообщения */
-        .message-block { 
-            display: flex; 
-            flex-direction: column; 
-            max-width: 80%; /* Сообщение не будет шире 80% от ширины чата */
-            /* margin-bottom: 0.5rem; удалено, т.к. используется gap на #chat-history */
-        }
-        
-        /* Общие стили для содержимого сообщения (самой "пузырька") */
-        .message-content { 
-            padding: 0.5rem 1rem; 
-            border-radius: 0.5rem; 
-            word-wrap: break-word; 
-            width: fit-content; /* <-- ИЗМЕНЕНО: Пузырек будет подстраиваться под ширину текста */
-            max-width: 100%; /* Гарантируем, что содержимое не выйдет за пределы message-block */
-            text-align: left; /* <-- ИЗМЕНЕНО: Текст внутри пузырька всегда выравнивается влево для читаемости */
-        }
-        
-        .message-time { 
-            font-size: 0.75rem; 
-            color: #adb5bd; 
-            margin-top: 4px; 
-        }
-        
-        /* Стили для сообщений пользователя */
-        .user-message { 
-            margin-left: auto; /* <-- НОВОЕ: Выравнивает весь блок сообщения вправо */
-        }
-        .user-message .message-content { 
-            background-color: #0d6efd; 
-        }
-        .user-message .message-time { 
-            text-align: right; /* Время для сообщения пользователя справа */
-        }
-        
-        /* Стили для сообщений ИИ */
-        .ai-message { 
-            margin-right: auto; /* <-- НОВОЕ: Выравнивает весь блок сообщения влево */
-        }
-        .ai-message .message-content { 
-            background-color: #495057; 
-        }
-        .ai-message .message-time { 
-            text-align: left; /* Время для сообщения ИИ слева */
-        }
+        /* Стили для чата (ВОССТАНОВЛЕНЫ ПРЕДЫДУЩИЕ ВЕРНЫЕ СТИЛИ) */
+        #chat-history { background-color: #2c3034; height: 500px; overflow-y: scroll; border: 1px solid #495057; padding: 10px; margin-bottom: 1rem; }
+        .message-block { display: flex; flex-direction: column; margin-bottom: 0.5rem; max-width: 80%; }
+        .message-content { padding: 0.5rem 1rem; border-radius: 0.5rem; word-wrap: break-word; }
+        .message-time { font-size: 0.75rem; color: #adb5bd; margin-top: 4px; }
+        .user-message { align-self: flex-end; }
+        .user-message .message-content { background-color: #0d6efd; text-align: left; }
+        .user-message .message-time { text-align: right; }
+        .ai-message { align-self: flex-start; }
+        .ai-message .message-content { background-color: #495057; text-align: left; white-space: pre-wrap; }
+        .chat-header { display: flex; justify-content: space-between; align-items: center; }
 
         /* Стили для Базы Знаний */
         .document-item { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; border-bottom: 1px solid #495057; }
         .document-item span { color: #f8f9fa; }
-        .upload-area { display: flex; gap: 1rem; align-items: center; }
+        .upload-area { 
+            display: flex; 
+            gap: 1rem; 
+            align-items: center; 
+            padding: 15px; /* Добавим padding для удобства перетаскивания */
+            border: 1px solid #6c757d; /* Изначальная рамка */
+            border-radius: 0.25rem;
+            transition: border-color 0.2s ease-in-out, background-color 0.2s ease-in-out; /* Плавный переход */
+        }
+        .upload-area.drag-over { /* <-- НОВОЕ: Стиль при перетаскивании файла */
+            border: 2px dashed #0d6efd; /* Синяя пунктирная рамка */
+            background-color: #3a4047; /* Чуть более светлый фон */
+        }
         .upload-area .btn-upload { flex-shrink: 0; }
         .file-name-display { background-color: #495057; padding: 0.375rem 0.75rem; border-radius: 0.25rem; border: 1px solid #6c757d; flex-grow: 1; text-align: left; color: #ccc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         #uploadButton:disabled { background-color: #6c757d; cursor: not-allowed; }
@@ -168,10 +133,7 @@
                         <div class="form-group mb-3 form-check form-switch">
                             <input type="checkbox" class="form-check-input" id="use_rag_toggle" name="use_rag" value="true">
                             <label class="form-check-label" for="use_rag_toggle">Использовать Базу Знаний (RAG)</label>
-                            <!-- ИЗМЕНЕНО: Класс text-muted заменен на text-light -->
-                            <small class="form-text text-light">Отключите, если хотите, чтобы ИИ отвечал только на основе системного промпта, без использования загруженных документов.</small>
-                        </div>
-                        <!-- КОНЕЦ НОВОГО ПЕРЕКЛЮЧАТЕЛЯ -->
+                        
 
                         <button type="submit" class="btn btn-success">Сохранить и Перезапустить</button>
                     </form>
@@ -196,6 +158,7 @@
     const uploadStatus = document.getElementById('uploadStatus');
     const documentList = document.getElementById('documentList');
     const paginationWrapper = document.getElementById('pagination-wrapper');
+    const uploadArea = document.querySelector('#uploadForm .upload-area'); // Целевая область для перетаскивания
 
     documentFile.addEventListener('change', () => {
         if (documentFile.files.length > 0) {
@@ -208,6 +171,37 @@
             uploadButton.disabled = true;
         }
     });
+
+    // --- Drag-and-Drop для загрузки документов ---
+    uploadArea.addEventListener('dragover', (e) => {
+        e.preventDefault(); // Отменяем действие по умолчанию, чтобы разрешить drop
+        uploadArea.classList.add('drag-over'); // Добавляем класс для визуального эффекта
+    });
+
+    uploadArea.addEventListener('dragleave', () => {
+        uploadArea.classList.remove('drag-over'); // Убираем класс, когда курсор уходит
+    });
+
+    uploadArea.addEventListener('drop', (e) => {
+        e.preventDefault(); // Отменяем действие по умолчанию (открытие файла в браузере)
+        uploadArea.classList.remove('drag-over'); // Убираем визуальный эффект
+
+        const files = e.dataTransfer.files; // Получаем список перетащенных файлов
+
+        if (files.length > 0) {
+            // Присваиваем первый файл (или единственный) нашему скрытому input
+            documentFile.files = files; 
+            // Имитируем событие change, чтобы обновить отображение имени файла и активировать кнопку
+            const event = new Event('change');
+            documentFile.dispatchEvent(event);
+            
+            // Автоматически запускаем загрузку, если файл выбран
+            if (!uploadButton.disabled) {
+                uploadForm.dispatchEvent(new Event('submit', { cancelable: true }));
+            }
+        }
+    });
+    // --- Конец Drag-and-Drop ---
 
     function displayDocuments(page) {
         currentPage = page;
@@ -269,79 +263,6 @@
         }
     }
     
-    uploadForm.addEventListener('submit', async (e) => { /* ... код без изменений ... */ });
-    async function deleteDocument(filename) { /* ... код без изменений ... */ }
-
-    // --- Остальная логика ---
-    const sendBtn = document.getElementById('send-btn');
-    const userInput = document.getElementById('user-input');
-    const chatHistory = document.getElementById('chat-history');
-    const loadingIndicator = document.getElementById('loading-indicator');
-    const clearChatBtn = document.getElementById('clearChatBtn');
-
-    clearChatBtn.addEventListener('click', () => {
-        chatHistory.innerHTML = '';
-    });
-
-    function addMessageToHistory(message, sender) {
-        const time = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-        const messageBlock = document.createElement('div');
-        messageBlock.className = `message-block ${sender}-message`;
-        
-        const messageContent = document.createElement('div');
-        messageContent.className = 'message-content';
-        messageContent.textContent = message;
-
-        const messageTime = document.createElement('div');
-        messageTime.className = 'message-time';
-        messageTime.textContent = time;
-
-        messageBlock.appendChild(messageContent);
-        messageBlock.appendChild(messageTime);
-        chatHistory.appendChild(messageBlock);
-        chatHistory.scrollTop = chatHistory.scrollHeight;
-    }
-    
-    sendBtn.addEventListener('click', async () => { /* ... код без изменений ... */ });
-    userInput.addEventListener('keydown', (e) => { /* ... код без изменений ... */ });
-    async function fetchStatus() { /* ... код без изменений ... */ }
-    async function fetchLogs() { /* ... код без изменений ... */ }
-    
-    // ИЗМЕНЕННАЯ ФУНКЦИЯ fetchSettings
-    async function fetchSettings() {
-        const response = await fetch('/api/settings');
-        const data = await response.json();
-        document.getElementById('prompt').value = data.prompt;
-        const modelSelect = document.getElementById('model');
-        modelSelect.innerHTML = '';
-        data.models_list.forEach(modelName => {
-            const option = document.createElement('option');
-            option.value = modelName;
-            option.textContent = modelName;
-            if (modelName === data.current_model) { option.selected = true; }
-            modelSelect.appendChild(option);
-        });
-        // Установка состояния чекбокса RAG
-        document.getElementById('use_rag_toggle').checked = data.use_rag; // <-- НОВАЯ СТРОКА
-    }
-
-    document.getElementById('settingsForm').addEventListener('submit', async function(e) {
-        e.preventDefault();
-        const formData = new FormData(this);
-        // FormData автоматически обрабатывает чекбоксы:
-        // если checked, то 'use_rag=true' будет в formData
-        // если unchecked, то 'use_rag' не будет в formData, и FastAPI Form(False) обработает это как False
-        
-        const saveStatus = document.getElementById('saveStatus');
-        saveStatus.innerHTML = '<div class="alert alert-info">Сохраняю...</div>';
-        const response = await fetch('/api/settings', { method: 'POST', body: formData });
-        const result = await response.json();
-        if (result.status === 'ok') { saveStatus.innerHTML = `<div class="alert alert-success">Настройки сохранены! Сервис перезапускается.</div>`; }
-        else { saveStatus.innerHTML = `<div class="alert alert-danger">Ошибка сохранения.</div>`; }
-        setTimeout(() => { saveStatus.innerHTML = ''; }, 5000);
-    });
-
-    // --- Полный код для всех функций (чтобы ничего не потерялось) ---
     uploadForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         if (!documentFile.files[0]) { alert('Выберите файл для загрузки.'); return; }
