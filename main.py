@@ -23,7 +23,7 @@ from langchain_community.document_loaders import (
     PyPDFLoader,
     Docx2txtLoader,
 )
-from langchain_experimental.document_loaders import PandasExcelLoader # <<< ИЗМЕНЕНИЕ
+from langchain_experimental.agents.agent_toolkits.pandas.base import create_pandas_dataframe_agent # <<< ИЗМЕНЕНИЕ
 from langchain_openai import OpenAIEmbeddings # Используем эмбеддинги от OpenAI, они качественные
 
 # --- Общие настройки ---
