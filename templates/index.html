@@ -115,6 +115,15 @@
                             <label for="prompt" class="form-label">Системный промпт</label>
                             <textarea class="form-control" id="prompt" name="prompt" rows="15"></textarea>
                         </div>
+                        
+                        <!-- НОВЫЙ ПЕРЕКЛЮЧАТЕЛЬ ДЛЯ RAG -->
+                        <div class="form-group mb-3 form-check form-switch">
+                            <input type="checkbox" class="form-check-input" id="use_rag_toggle" name="use_rag" value="true">
+                            <label class="form-check-label" for="use_rag_toggle">Использовать Базу Знаний (RAG)</label>
+                            <small class="form-text text-muted">Отключите, если хотите, чтобы ИИ отвечал только на основе системного промпта, без использования загруженных документов.</small>
+                        </div>
+                        <!-- КОНЕЦ НОВОГО ПЕРЕКЛЮЧАТЕЛЯ -->
+
                         <button type="submit" class="btn btn-success">Сохранить и Перезапустить</button>
                     </form>
                     <div id="saveStatus" class="mt-3"></div>
@@ -248,8 +257,40 @@
     userInput.addEventListener('keydown', (e) => { /* ... код без изменений ... */ });
     async function fetchStatus() { /* ... код без изменений ... */ }
     async function fetchLogs() { /* ... код без изменений ... */ }
-    async function fetchSettings() { /* ... код без изменений ... */ }
-    document.getElementById('settingsForm').addEventListener('submit', async function(e) { /* ... код без изменений ... */ });
+    
+    // ИЗМЕНЕННАЯ ФУНКЦИЯ fetchSettings
+    async function fetchSettings() {
+        const response = await fetch('/api/settings');
+        const data = await response.json();
+        document.getElementById('prompt').value = data.prompt;
+        const modelSelect = document.getElementById('model');
+        modelSelect.innerHTML = '';
+        data.models_list.forEach(modelName => {
+            const option = document.createElement('option');
+            option.value = modelName;
+            option.textContent = modelName;
+            if (modelName === data.current_model) { option.selected = true; }
+            modelSelect.appendChild(option);
+        });
+        // Установка состояния чекбокса RAG
+        document.getElementById('use_rag_toggle').checked = data.use_rag; // <-- НОВАЯ СТРОКА
+    }
+
+    document.getElementById('settingsForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        // FormData автоматически обрабатывает чекбоксы:
+        // если checked, то 'use_rag=true' будет в formData
+        // если unchecked, то 'use_rag' не будет в formData, и FastAPI Form(False) обработает это как False
+        
+        const saveStatus = document.getElementById('saveStatus');
+        saveStatus.innerHTML = '<div class="alert alert-info">Сохраняю...</div>';
+        const response = await fetch('/api/settings', { method: 'POST', body: formData });
+        const result = await response.json();
+        if (result.status === 'ok') { saveStatus.innerHTML = `<div class="alert alert-success">Настройки сохранены! Сервис перезапускается.</div>`; }
+        else { saveStatus.innerHTML = `<div class="alert alert-danger">Ошибка сохранения.</div>`; }
+        setTimeout(() => { saveStatus.innerHTML = ''; }, 5000);
+    });
 
     // --- Полный код для всех функций (чтобы ничего не потерялось) ---
     uploadForm.addEventListener('submit', async (e) => {
@@ -325,36 +366,11 @@
             logsContainer.scrollTop = logsContainer.scrollHeight;
         } catch (error) { logsContainer.textContent = 'Не удалось загрузить логи.'; }
     }
-    async function fetchSettings() {
-        const response = await fetch('/api/settings');
-        const data = await response.json();
-        document.getElementById('prompt').value = data.prompt;
-        const modelSelect = document.getElementById('model');
-        modelSelect.innerHTML = '';
-        data.models_list.forEach(modelName => {
-            const option = document.createElement('option');
-            option.value = modelName;
-            option.textContent = modelName;
-            if (modelName === data.current_model) { option.selected = true; }
-            modelSelect.appendChild(option);
-        });
-    }
-    document.getElementById('settingsForm').addEventListener('submit', async function(e) {
-        e.preventDefault();
-        const formData = new FormData(this);
-        const saveStatus = document.getElementById('saveStatus');
-        saveStatus.innerHTML = '<div class="alert alert-info">Сохраняю...</div>';
-        const response = await fetch('/api/settings', { method: 'POST', body: formData });
-        const result = await response.json();
-        if (result.status === 'ok') { saveStatus.innerHTML = `<div class="alert alert-success">Настройки сохранены! Сервис перезапускается.</div>`; }
-        else { saveStatus.innerHTML = `<div class="alert alert-danger">Ошибка сохранения.</div>`; }
-        setTimeout(() => { saveStatus.innerHTML = ''; }, 5000);
-    });
-
+    
     window.onload = () => {
         fetchStatus();
         fetchLogs();
-        fetchSettings();
+        fetchSettings(); // Эта функция теперь загружает и состояние RAG
         fetchDocuments();
         setInterval(fetchStatus, 5000);
     };
