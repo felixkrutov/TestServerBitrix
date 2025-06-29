@@ -133,7 +133,10 @@
                         <div class="form-group mb-3 form-check form-switch">
                             <input type="checkbox" class="form-check-input" id="use_rag_toggle" name="use_rag" value="true">
                             <label class="form-check-label" for="use_rag_toggle">Использовать Базу Знаний (RAG)</label>
-                        
+                            <!-- ИЗМЕНЕНО: Класс text-muted заменен на text-light -->
+                            <small class="form-text text-light">Отключите, если хотите, чтобы ИИ отвечал только на основе системного промпта, без использования загруженных документов.</small>
+                        </div>
+                        <!-- КОНЕЦ НОВОГО ПЕРЕКЛЮЧАТЕЛЯ -->
 
                         <button type="submit" class="btn btn-success">Сохранить и Перезапустить</button>
                     </form>
