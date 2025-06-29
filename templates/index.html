@@ -168,10 +168,18 @@
     }
 
     async function fetchLogs() {
+    const logsContainer = document.getElementById('logs');
+    logsContainer.textContent = 'Обновление...';
+    try {
         const response = await fetch('/api/logs');
         const data = await response.json();
-        document.getElementById('logs').textContent = data.logs;
+        logsContainer.textContent = data.logs || 'Логи за последние 5 минут пусты.';
+        // <<< ВОТ ОНО, ГЛАВНОЕ ИЗМЕНЕНИЕ >>>
+        logsContainer.scrollTop = logsContainer.scrollHeight;
+    } catch (error) {
+        logsContainer.textContent = 'Не удалось загрузить логи.';
     }
+}
 
     async function fetchSettings() {
         const response = await fetch('/api/settings');
