@@ -126,6 +126,10 @@ def get_ai_response(model_name: str, full_input_prompt: str, user_query: str):
     print("INFO: Поиск релевантных документов в базе знаний...")
     retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
     relevant_docs = retriever.get_relevant_documents(user_query)
+    print(f"DEBUG: Найдено {len(relevant_docs)} релевантных документов.")
+for i, doc in enumerate(relevant_docs):
+    print(f"DEBUG: Документ {i+1} (источник: {doc.metadata.get('source', 'N/A')}):")
+    print(f"DEBUG: {doc.page_content[:200]}...") # Печатаем первые 200 символов
     context = "\n\n---\n\n".join([doc.page_content for doc in relevant_docs])
     
     rag_prompt = f"CONTEXT:\n{context}\n---\nPROMPT:\n{full_input_prompt}\n\nИспользуя предоставленный CONTEXT, ответь на PROMPT. Если в контексте нет ответа, сообщи, что информация не найдена в базе знаний."
