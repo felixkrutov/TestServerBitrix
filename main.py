@@ -22,7 +22,7 @@ from langchain_community.document_loaders import (
     TextLoader,
     PyPDFLoader,
     Docx2txtLoader,
-    UnstructuredExcelLoader, # <<< ИСПРАВЛЕНИЕ
+    UnstructuredExcelLoader,
 )
 from langchain_openai import OpenAIEmbeddings
 
@@ -53,6 +53,18 @@ if GEMINI_API_KEY:
 else:
     print("WARNING: GEMINI_API_KEY не найден.")
 
+# --- Функция для проверки пароля (ПЕРЕМЕЩЕНА ВВЕРХ) ---
+def get_current_username(credentials: HTTPBasicCredentials = Depends(security)):
+    correct_username = secrets.compare_digest(credentials.username, ADMIN_USERNAME)
+    correct_password = secrets.compare_digest(credentials.password, ADMIN_PASSWORD)
+    if not (correct_username and correct_password):
+        raise HTTPException(
+            status_code=401,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return credentials.username
+
 # --- RAG: База Знаний ---
 os.makedirs(DOCS_DIR, exist_ok=True)
 os.makedirs(DB_DIR, exist_ok=True)
@@ -61,13 +73,12 @@ embeddings = OpenAIEmbeddings(api_key=OPENAI_API_KEY)
 vectorstore = Chroma(persist_directory=DB_DIR, embedding_function=embeddings)
 text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
 
-# Словарь для выбора загрузчика в зависимости от типа файла
 LOADER_MAPPING = {
     ".txt": (TextLoader, {"encoding": "utf-8"}),
     ".md": (TextLoader, {"encoding": "utf-8"}),
     ".pdf": (PyPDFLoader, {}),
     ".docx": (Docx2txtLoader, {}),
-    ".xlsx": (UnstructuredExcelLoader, {"mode": "single"}), # <<< ИСПРАВЛЕНИЕ
+    ".xlsx": (UnstructuredExcelLoader, {"mode": "single"}),
 }
 
 def load_and_process_document(file_path: str):
@@ -134,11 +145,6 @@ def get_ai_response(model_name: str, full_input_prompt: str, user_query: str):
         raise ValueError(f"Ошибка: Неизвестный провайдер для модели '{model_name}'.")
 
 # --- Админка, чат и логика Битрикс24 ---
-def get_current_username(credentials: HTTPBasicCredentials = Depends(security)):
-    correct_username = secrets.compare_digest(credentials.username, ADMIN_USERNAME)
-    correct_password = secrets.compare_digest(credentials.password, ADMIN_PASSWORD)
-    if not (correct_username and correct_password): raise HTTPException(status_code=401, detail="Incorrect username or password", headers={"WWW-Authenticate": "Basic"})
-    return credentials.username
 @app.get("/", response_class=HTMLResponse)
 async def read_admin_ui(request: Request, username: str = Depends(get_current_username)): return templates.TemplateResponse("index.html", {"request": request})
 @app.get("/api/status")
