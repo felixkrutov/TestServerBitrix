@@ -9,9 +9,10 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
-# --- ИЗМЕНЕНИЕ: ИМПОРТЫ ДЛЯ ОБЕИХ API ---
+# --- Импорты для API ---
 import openai
 import google.generativeai as genai 
+from googleapiclient.discovery import build # Для Google Custom Search
 
 # --- Общие настройки ---
 app = FastAPI()
@@ -23,45 +24,146 @@ MODELS_LIST_FILE = "models_list.txt"
 CURRENT_MODEL_FILE = "current_model.txt"
 PROMPT_FILE = "prompt.txt"
 
-# Получаем ключи и учетные данные для админки из переменных окружения
-# ИЗМЕНЕНИЕ: Получаем оба ключа
+# --- Получение всех ключей из переменных окружения ---
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") 
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") # Для Google Custom Search
+SEARCH_ENGINE_ID = os.getenv("SEARCH_ENGINE_ID") # Для Google Custom Search
 
 B24_WEBHOOK_URL_FOR_UPDATE = os.getenv("B24_WEBHOOK_URL_FOR_UPDATE")
 B24_SECRET_TOKEN = os.getenv("B24_SECRET_TOKEN")
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin")
 
-# ИНИЦИАЛИЗАЦИЯ КЛИЕНТОВ (ОБА)
+# --- Инициализация клиентов API ---
 openai_client = openai.OpenAI(api_key=OPENAI_API_KEY)
-# Инициализируем Gemini только если ключ есть, чтобы избежать ошибок при его отсутствии
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 else:
     print("WARNING: GEMINI_API_KEY не найден. Функционал Gemini будет недоступен.")
 
+# --- Инструмент для поиска в интернете (для Gemini) ---
+def search_internet(query: str):
+    """Ищет в интернете с помощью Google Custom Search API по заданному запросу."""
+    print(f"TOOL USE: Выполняется поиск в интернете по запросу: '{query}'")
+    if not GOOGLE_API_KEY or not SEARCH_ENGINE_ID:
+        return "Ошибка: GOOGLE_API_KEY или SEARCH_ENGINE_ID не настроены в переменных окружения."
+    
+    try:
+        service = build("customsearch", "v1", developerKey=GOOGLE_API_KEY)
+        # Ищем 3 наиболее релевантных результата
+        res = service.cse().list(q=query, cx=SEARCH_ENGINE_ID, num=3).execute()
 
-# Функция для проверки пароля
+        items = res.get('items', [])
+        if not items:
+            return "Поиск не дал результатов."
+
+        # Собираем компактный результат для ИИ
+        snippets = []
+        for item in items:
+            snippets.append(f"Заголовок: {item.get('title', '')}\nФрагмент: {item.get('snippet', '')}\nИсточник: {item.get('link', '')}")
+        
+        return "\n\n".join(snippets)
+
+    except Exception as e:
+        print(f"TOOL ERROR: Ошибка при поиске Google: {e}")
+        return f"Ошибка при выполнении поиска: {e}"
+
+# Описание инструмента для Gemini
+gemini_tools = [
+    {
+        "function_declarations": [
+            {
+                "name": "search_internet",
+                "description": "Ищет в интернете актуальную информацию, новости, факты по заданному запросу, если в текущем контексте нет ответа.",
+                "parameters": {
+                    "type_": "OBJECT",
+                    "properties": {
+                        "query": {"type_": "STRING", "description": "Поисковый запрос на русском или английском языке"}
+                    },
+                    "required": ["query"]
+                }
+            }
+        ]
+    }
+]
+
+# --- Универсальная функция для вызова ИИ ---
+def get_ai_response(model_name: str, full_input_prompt: str):
+    """
+    Получает ответ от ИИ, автоматически выбирая API (OpenAI или Gemini)
+    и обрабатывая инструменты (поиск в интернете).
+    """
+    
+    # --- Вариант 1: OpenAI ---
+    if model_name.startswith("gpt-"):
+        print(f"INFO: Используется OpenAI API для модели {model_name}")
+        if not OPENAI_API_KEY:
+            raise ValueError("OPENAI_API_KEY не установлен.")
+        response = openai_client.responses.create(
+            model=model_name,
+            input=full_input_prompt,
+            tools=[{"type": "web_search_preview"}] # Встроенный поиск OpenAI
+        )
+        return response.output_text
+
+    # --- Вариант 2: Gemini ---
+    elif model_name.startswith("gemini-"):
+        print(f"INFO: Используется Gemini API для модели {model_name}")
+        if not GEMINI_API_KEY:
+            raise ValueError("GEMINI_API_KEY не установлен.")
+            
+        model = genai.GenerativeModel(model_name, tools=gemini_tools)
+        chat = model.start_chat()
+        
+        # Первый запрос к Gemini
+        response = chat.send_message(full_input_prompt)
+        
+        # Проверяем, хочет ли Gemini использовать наш инструмент поиска
+        try:
+            function_call = response.candidates[0].content.parts[0].function_call
+            if function_call.name == "search_internet":
+                query = function_call.args['query']
+                search_result = search_internet(query=query)
+                
+                # Отправляем результаты поиска обратно в Gemini
+                response = chat.send_message(
+                    genai.types.Part(
+                        function_response=genai.types.FunctionResponse(
+                            name='search_internet',
+                            response={'result': search_result},
+                        ),
+                    ),
+                )
+        except (IndexError, AttributeError):
+            # Если function_call не найден, просто продолжаем
+            pass
+
+        return response.text
+
+    # --- Вариант 3: Неизвестный провайдер ---
+    else:
+        raise ValueError(f"Ошибка: Неизвестный провайдер для модели '{model_name}'.")
+
+# --- Админка, чат и логика Битрикс24 ---
+# (Этот код использует универсальную функцию get_ai_response)
+
 def get_current_username(credentials: HTTPBasicCredentials = Depends(security)):
+    # ... без изменений ...
     correct_username = secrets.compare_digest(credentials.username, ADMIN_USERNAME)
     correct_password = secrets.compare_digest(credentials.password, ADMIN_PASSWORD)
     if not (correct_username and correct_password):
         raise HTTPException(
-            status_code=401,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Basic"},
-        )
+            status_code=401, detail="Incorrect username or password", headers={"WWW-Authenticate": "Basic"})
     return credentials.username
 
-# Главная страница админки. ЗАМЕНЯЕТ СТАРЫЙ @app.get("/")
 @app.get("/", response_class=HTMLResponse)
 async def read_admin_ui(request: Request, username: str = Depends(get_current_username)):
     return templates.TemplateResponse("index.html", {"request": request})
 
-# API для получения статуса
 @app.get("/api/status")
 async def get_status(username: str = Depends(get_current_username)):
+    # ... без изменений ...
     try:
         result = subprocess.run(["systemctl", "is-active", "bitrix-gpt.service"], capture_output=True, text=True)
         status = result.stdout.strip()
@@ -69,9 +171,10 @@ async def get_status(username: str = Depends(get_current_username)):
         status = "failed"
     return {"status": status}
 
-# API для получения логов
+
 @app.get("/api/logs")
 async def get_logs(username: str = Depends(get_current_username)):
+    # ... без изменений ...
     try:
         result = subprocess.run(["journalctl", "-u", "bitrix-gpt.service", "--since", "5 minutes ago", "--no-pager"], capture_output=True, text=True)
         logs = result.stdout
@@ -79,11 +182,11 @@ async def get_logs(username: str = Depends(get_current_username)):
         logs = "Не удалось загрузить логи."
     return {"logs": logs}
 
-# API для получения текущих настроек
+
 @app.get("/api/settings")
 async def get_settings(username: str = Depends(get_current_username)):
-    # ИЗМЕНЕНИЕ: В список моделей по умолчанию добавляем и OpenAI, и Gemini
-    default_models = ["gpt-4o", "gemini-2.5-pro"]
+    # ... без изменений ...
+    default_models = ["o4-mini-2025-04-16", "gemini-2.5-pro"]
     try:
         with open(MODELS_LIST_FILE, "r") as f: models_list = [line.strip() for line in f]
     except FileNotFoundError: models_list = default_models
@@ -95,67 +198,38 @@ async def get_settings(username: str = Depends(get_current_username)):
     except FileNotFoundError: prompt = "Промпт по умолчанию"
     return {"models_list": models_list, "current_model": current_model, "prompt": prompt}
 
-# API для сохранения новых настроек
+
 @app.post("/api/settings")
-async def save_settings(
-    username: str = Depends(get_current_username),
-    model: str = Form(...),
-    prompt: str = Form(...)
-):
+async def save_settings(username: str = Depends(get_current_username), model: str = Form(...), prompt: str = Form(...)):
+    # ... без изменений ...
     with open(CURRENT_MODEL_FILE, "w") as f: f.write(model)
     with open(PROMPT_FILE, "w") as f: f.write(prompt)
     subprocess.run(["systemctl", "restart", "bitrix-gpt.service"])
     return {"status": "ok"}
 
 
-# --- Тестовый чат в админке ---
-
 class ChatRequest(BaseModel):
     user_message: str
 
 @app.post("/api/chat")
-async def handle_chat(
-    chat_request: ChatRequest,
-    username: str = Depends(get_current_username)
-):
+async def handle_chat(chat_request: ChatRequest, username: str = Depends(get_current_username)):
     try:
         with open(PROMPT_FILE, "r") as f: system_prompt = f.read().strip()
         with open(CURRENT_MODEL_FILE, "r") as f: model_name = f.read().strip()
     except FileNotFoundError:
-        return JSONResponse(status_code=500, content={"ai_response": "Ошибка: Файлы настроек (prompt.txt или current_model.txt) не найдены."})
+        return JSONResponse(status_code=500, content={"ai_response": "Ошибка: Файлы настроек не найдены."})
 
     full_input_prompt = f"{system_prompt}\n\nПроанализируй следующии характиристики клиента и подготовь ответ для клиента: \n\n{chat_request.user_message}"
-
-    ai_response_text = "Ошибка: Не удалось получить ответ от ИИ."
-
+    
     try:
-        # ИЗМЕНЕНИЕ: ЛОГИКА ВЫБОРА API
-        if model_name.startswith("gpt-"): # Модели OpenAI начинаются с "gpt-"
-            if not OPENAI_API_KEY:
-                raise ValueError("OPENAI_API_KEY не установлен в переменных окружения.")
-            response = openai_client.responses.create(
-                model=model_name,
-                input=full_input_prompt,
-                tools=[{"type": "web_search_preview"}] # Web Search только для OpenAI
-            )
-            ai_response_text = response.output_text
-        elif model_name.startswith("gemini-"): # Модели Gemini начинаются с "gemini-"
-            if not GEMINI_API_KEY:
-                raise ValueError("GEMINI_API_KEY не установлен в переменных окружения.")
-            model = genai.GenerativeModel(model_name)
-            response = model.generate_content(full_input_prompt)
-            ai_response_text = response.text
-        else:
-            ai_response_text = f"Ошибка: Неизвестный провайдер для модели '{model_name}'. Проверьте models_list.txt"
+        ai_response_text = get_ai_response(model_name, full_input_prompt)
     except Exception as e:
         ai_response_text = f"Ошибка при обращении к ИИ ({model_name}): {str(e)}"
     
     return {"ai_response": ai_response_text}
 
-
-# --- Логика для Битрикс24 (ПЕРЕДЕЛАНА НА АСИНХРОННУЮ) ---
-
 def get_lead_data_from_b24(lead_id):
+    # ... без изменений ...
     print(f"DEBUG: Получение данных лида {lead_id} из Битрикс24...")
     if not B24_WEBHOOK_URL_FOR_UPDATE: return None
     try:
@@ -168,6 +242,7 @@ def get_lead_data_from_b24(lead_id):
         return None
 
 def update_b24_lead(lead_id, comment_text):
+    # ... без изменений ...
     print(f"DEBUG: Обновление лида {lead_id} в Битрикс24...")
     if not B24_WEBHOOK_URL_FOR_UPDATE: return
     params = {"fields": {"ENTITY_ID": lead_id, "ENTITY_TYPE": "lead", "COMMENT": f"{comment_text}"}}
@@ -178,16 +253,12 @@ def update_b24_lead(lead_id, comment_text):
         print(f"ERROR: Ошибка при обновлении лида в Битрикс24: {e}")
 
 def process_lead_in_background(lead_id: str):
-    """Эта функция будет выполняться в фоне, уже после того, как мы ответили Битриксу."""
     print(f"BACKGROUND: Начало фоновой обработки лида {lead_id}.")
-    
     lead_data = get_lead_data_from_b24(lead_id)
     if not lead_data: 
         print(f"BACKGROUND ERROR: Не удалось получить данные лида {lead_id}, прерываем.")
         return 
-    
     task_text = lead_data.get("COMMENTS", "Текст ТЗ не найден.")
-    
     try:
         with open(PROMPT_FILE, "r") as f: system_prompt = f.read().strip()
         with open(CURRENT_MODEL_FILE, "r") as f: model_name = f.read().strip()
@@ -200,26 +271,9 @@ def process_lead_in_background(lead_id: str):
     full_input_prompt = f"{system_prompt}\n\nПроанализируй следующии характиристики клиента и подготовь ответ для клиента: \n\n{task_text}"
     print(f"BACKGROUND: Запрос к ИИ для лида {lead_id} сформирован. Отправка...")
 
-    ai_response_text = "Ошибка: Не удалось получить ответ от ИИ."
     try:
-        # ИЗМЕНЕНИЕ: ЛОГИКА ВЫБОРА API
-        if model_name.startswith("gpt-"): # Модели OpenAI начинаются с "gpt-"
-            if not OPENAI_API_KEY:
-                raise ValueError("OPENAI_API_KEY не установлен в переменных окружения.")
-            response = openai_client.responses.create(
-                model=model_name,
-                input=full_input_prompt,
-                tools=[{"type": "web_search_preview"}] # Web Search только для OpenAI
-            )
-            ai_response_text = response.output_text
-        elif model_name.startswith("gemini-"): # Модели Gemini начинаются с "gemini-"
-            if not GEMINI_API_KEY:
-                raise ValueError("GEMINI_API_KEY не установлен в переменных окружения.")
-            model = genai.GenerativeModel(model_name)
-            response = model.generate_content(full_input_prompt)
-            ai_response_text = response.text
-        else:
-            ai_response_text = f"Ошибка: Неизвестный провайдер для модели '{model_name}'. Проверьте models_list.txt"
+        ai_response_text = get_ai_response(model_name, full_input_prompt)
+        print(f"BACKGROUND: Ответ от ИИ для лида {lead_id} получен.")
     except Exception as e:
         ai_response_text = f"Ошибка при обращении к ИИ ({model_name}): {str(e)}"
         print(f"BACKGROUND ERROR: {ai_response_text}")
@@ -227,9 +281,9 @@ def process_lead_in_background(lead_id: str):
     update_b24_lead(lead_id, ai_response_text)
     print(f"BACKGROUND: Фоновая обработка лида {lead_id} завершена успешно.")
 
-
 @app.post("/b24-hook-a8xZk7pQeR1fG3hJkL")
 async def b24_hook(req: Request, background_tasks: BackgroundTasks):
+    # ... без изменений ...
     print("DEBUG: Запрос от Битрикс24 получен.")
     try:
         form_data = await req.form()
