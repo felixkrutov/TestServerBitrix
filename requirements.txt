@@ -5,4 +5,10 @@ requests
 python-multipart
 jinja2
 google-generativeai
-google-api-python-client
+langchain
+chromadb
+tiktoken
+pypdf
+python-docx
+pandas
+openpyxl
