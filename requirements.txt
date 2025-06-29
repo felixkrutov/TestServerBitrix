@@ -15,3 +15,4 @@ openpyxl
 langchain-community
 langchain-experimental
 unstructured
+langchain-openai
