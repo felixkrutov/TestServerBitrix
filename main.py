@@ -5,7 +5,7 @@ import requests
 import subprocess
 import secrets
 from fastapi import FastAPI, Request, HTTPException, Depends, Form, BackgroundTasks, UploadFile, File
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse # Добавил RedirectResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
@@ -37,6 +37,7 @@ CURRENT_MODEL_FILE = "current_model.txt"
 PROMPT_FILE = "prompt.txt"
 DOCS_DIR = "documents"
 DB_DIR = "chroma_db"
+USE_RAG_FILE = "use_rag.txt" # <-- НОВАЯ ПЕРЕМЕННАЯ ДЛЯ ФАЙЛА НАСТРОЙКИ RAG
 
 # --- Получение всех ключей из переменных окружения ---
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -94,6 +95,23 @@ def load_and_process_document(file_path: str):
     else:
         print(f"WARNING: Неподдерживаемый формат файла: {file_path}")
 
+# --- Функции для загрузки/сохранения состояния RAG ---
+def load_rag_setting():
+    """Загружает состояние использования RAG из файла."""
+    try:
+        with open(USE_RAG_FILE, "r") as f:
+            return f.read().strip().lower() == "true"
+    except FileNotFoundError:
+        return True # По умолчанию RAG включен, если файл не найден
+
+def save_rag_setting(value: bool):
+    """Сохраняет состояние использования RAG в файл."""
+    with open(USE_RAG_FILE, "w") as f:
+        f.write(str(value).lower())
+
+# Инициализация состояния RAG при запуске
+USE_RAG = load_rag_setting() # <-- ГЛОБАЛЬНАЯ ПЕРЕМЕННАЯ ДЛЯ СОСТОЯНИЯ RAG
+
 @app.on_event("startup")
 def on_startup():
     print("INFO: Сервер запущен. Проверка базы знаний...")
@@ -123,20 +141,29 @@ async def delete_document(filename: str, username: str = Depends(get_current_use
 
 # --- Универсальная функция для вызова ИИ (теперь с RAG) ---
 def get_ai_response(model_name: str, full_input_prompt: str, user_query: str):
-    print("INFO: Поиск релевантных документов в базе знаний...")
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
-    relevant_docs = retriever.get_relevant_documents(user_query)
-    
-    # --- НАЧАЛО ИСПРАВЛЕНИЯ ОТСТУПОВ ---
-    print(f"DEBUG: Найдено {len(relevant_docs)} релевантных документов.")
-    for i, doc in enumerate(relevant_docs):
-        print(f"DEBUG: Документ {i+1} (источник: {doc.metadata.get('source', 'N/A')}):")
-        print(f"DEBUG: {doc.page_content[:200]}...") # Печатаем первые 200 символов
-    
-    context = "\n\n---\n\n".join([doc.page_content for doc in relevant_docs])
-    
-    rag_prompt = f"CONTEXT:\n{context}\n---\nPROMPT:\n{full_input_prompt}\n\nИспользуя предоставленный CONTEXT, ответь на PROMPT. Если в контексте нет ответа, сообщи, что информация не найдена в базе знаний."
-    
+    global USE_RAG # Доступ к глобальной переменной
+
+    context = ""
+    if USE_RAG: # <-- УСЛОВИЕ ДЛЯ ВКЛЮЧЕНИЯ/ВЫКЛЮЧЕНИЯ RAG
+        print("INFO: Поиск релевантных документов в базе знаний...")
+        retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
+        relevant_docs = retriever.get_relevant_documents(user_query)
+        
+        print(f"DEBUG: Найдено {len(relevant_docs)} релевантных документов.")
+        for i, doc in enumerate(relevant_docs):
+            print(f"DEBUG: Документ {i+1} (источник: {doc.metadata.get('source', 'N/A')}):")
+            print(f"DEBUG: {doc.page_content[:200]}...") # Печатаем первые 200 символов
+        
+        context = "\n\n---\n\n".join([doc.page_content for doc in relevant_docs])
+    else:
+        print("INFO: Использование базы знаний отключено.")
+
+    # Формирование промпта в зависимости от наличия контекста
+    if context:
+        rag_prompt = f"CONTEXT:\n{context}\n---\nPROMPT:\n{full_input_prompt}\n\nИспользуя предоставленный CONTEXT, ответь на PROMPT. Если в контексте нет ответа, сообщи, что информация не найдена в базе знаний."
+    else:
+        rag_prompt = full_input_prompt # Если RAG отключен, используем только основной промпт
+
     if model_name.startswith("gpt-") or model_name.startswith("o4-"):
         print(f"INFO: Используется OpenAI API для модели {model_name}")
         if not OPENAI_API_KEY: raise ValueError("OPENAI_API_KEY не установлен.")
@@ -150,21 +177,55 @@ def get_ai_response(model_name: str, full_input_prompt: str, user_query: str):
         return response.text
     else:
         raise ValueError(f"Ошибка: Неизвестный провайдер для модели '{model_name}'.")
-    # --- КОНЕЦ ИСПРАВЛЕНИЯ ОТСТУПОВ ---
 
 # --- Админка, чат и логика Битрикс24 ---
 @app.get("/", response_class=HTMLResponse)
-async def read_admin_ui(request: Request, username: str = Depends(get_current_username)): return templates.TemplateResponse("index.html", {"request": request})
+async def read_admin_ui(request: Request, username: str = Depends(get_current_username)):
+    # Загрузка текущих настроек для отображения
+    default_models = ["o4-mini-2025-04-16", "gemini-2.5-pro"]
+    try:
+        with open(MODELS_LIST_FILE, "r") as f: models_list = [line.strip() for line in f]
+    except FileNotFoundError: models_list = default_models
+    try:
+        with open(CURRENT_MODEL_FILE, "r") as f: current_model = f.read().strip()
+    except FileNotFoundError: current_model = models_list[0] if models_list else default_models[0]
+    try:
+        with open(PROMPT_FILE, "r") as f: prompt = f.read().strip()
+    except FileNotFoundError: prompt = "Промпт по умолчанию"
+    
+    # Получение списка загруженных файлов
+    uploaded_files = [f for f in os.listdir(DOCS_DIR) if os.path.isfile(os.path.join(DOCS_DIR, f))]
+
+    # Получение логов (последние 5 минут)
+    try: result = subprocess.run(["journalctl", "-u", "bitrix-gpt.service", "--since", "5 minutes ago", "--no-pager"], capture_output=True, text=True); logs = result.stdout
+    except FileNotFoundError: logs = "Не удалось загрузить логи."
+
+    # Загрузка состояния RAG для отображения на странице
+    use_rag_setting = load_rag_setting() # <-- ЗАГРУЖАЕМ СОСТОЯНИЕ RAG
+
+    # Передача всех данных в шаблон
+    return templates.TemplateResponse("index.html", {
+        "request": request,
+        "current_model": current_model,
+        "models": models_list,
+        "system_prompt": prompt,
+        "logs": logs,
+        "uploaded_files": uploaded_files,
+        "use_rag": use_rag_setting # <-- ПЕРЕДАЕМ СОСТОЯНИЕ RAG В ШАБЛОН
+    })
+
 @app.get("/api/status")
 async def get_status(username: str = Depends(get_current_username)):
     try: result = subprocess.run(["systemctl", "is-active", "bitrix-gpt.service"], capture_output=True, text=True); status = result.stdout.strip()
     except FileNotFoundError: status = "failed"
     return {"status": status}
+
 @app.get("/api/logs")
 async def get_logs(username: str = Depends(get_current_username)):
     try: result = subprocess.run(["journalctl", "-u", "bitrix-gpt.service", "--since", "5 minutes ago", "--no-pager"], capture_output=True, text=True); logs = result.stdout
     except FileNotFoundError: logs = "Не удалось загрузить логи."
     return {"logs": logs}
+
 @app.get("/api/settings")
 async def get_settings(username: str = Depends(get_current_username)):
     default_models = ["o4-mini-2025-04-16", "gemini-2.5-pro"]
@@ -177,26 +238,56 @@ async def get_settings(username: str = Depends(get_current_username)):
     try:
         with open(PROMPT_FILE, "r") as f: prompt = f.read().strip()
     except FileNotFoundError: prompt = "Промпт по умолчанию"
-    return {"models_list": models_list, "current_model": current_model, "prompt": prompt}
+    
+    use_rag_setting = load_rag_setting() # <-- ЗАГРУЖАЕМ СОСТОЯНИЕ RAG
+
+    return {
+        "models_list": models_list,
+        "current_model": current_model,
+        "prompt": prompt,
+        "use_rag": use_rag_setting # <-- ВОЗВРАЩАЕМ СОСТОЯНИЕ RAG
+    }
+
 @app.post("/api/settings")
-async def save_settings(username: str = Depends(get_current_username), model: str = Form(...), prompt: str = Form(...)):
-    with open(CURRENT_MODEL_FILE, "w") as f: f.write(model)
-    with open(PROMPT_FILE, "w") as f: f.write(prompt)
+async def save_settings(
+    username: str = Depends(get_current_username),
+    model: str = Form(...),
+    prompt: str = Form(...),
+    use_rag: bool = Form(False) # <-- НОВЫЙ ПАРАМЕТР ИЗ ФОРМЫ
+):
+    global CURRENT_MODEL, SYSTEM_PROMPT, USE_RAG # <-- ДОБАВЛЯЕМ USE_RAG В ГЛОБАЛЬНЫЕ
+    
+    CURRENT_MODEL = model
+    SYSTEM_PROMPT = prompt
+    USE_RAG = use_rag # <-- ОБНОВЛЯЕМ ГЛОБАЛЬНУЮ ПЕРЕМЕННУЮ
+    
+    with open(CURRENT_MODEL_FILE, "w") as f: f.write(CURRENT_MODEL)
+    with open(PROMPT_FILE, "w") as f: f.write(SYSTEM_PROMPT)
+    save_rag_setting(USE_RAG) # <-- СОХРАНЯЕМ СОСТОЯНИЕ RAG В ФАЙЛ
+
+    # Перезапуск сервиса для применения изменений
     subprocess.run(["systemctl", "restart", "bitrix-gpt.service"])
+    
     return {"status": "ok"}
+
 class ChatRequest(BaseModel): user_message: str
+
 @app.post("/api/chat")
 async def handle_chat(chat_request: ChatRequest, username: str = Depends(get_current_username)):
     try:
         with open(PROMPT_FILE, "r") as f: system_prompt = f.read().strip()
         with open(CURRENT_MODEL_FILE, "r") as f: model_name = f.read().strip()
     except FileNotFoundError: return JSONResponse(status_code=500, content={"ai_response": "Ошибка: Файлы настроек не найдены."})
+    
     full_input_prompt = f"{system_prompt}\n\nClient request:\n{chat_request.user_message}"
+    
     try:
+        # get_ai_response уже содержит логику USE_RAG
         ai_response_text = get_ai_response(model_name, full_input_prompt, chat_request.user_message)
     except Exception as e:
         ai_response_text = f"Ошибка при обращении к ИИ ({model_name}): {str(e)}"
     return {"ai_response": ai_response_text}
+
 def get_lead_data_from_b24(lead_id):
     print(f"DEBUG: Получение данных лида {lead_id} из Битрикс24...")
     if not B24_WEBHOOK_URL_FOR_UPDATE: return None
@@ -208,6 +299,7 @@ def get_lead_data_from_b24(lead_id):
     except Exception as e:
         print(f"ERROR: Ошибка при получении данных лида {lead_id}: {e}")
         return None
+
 def update_b24_lead(lead_id, comment_text):
     print(f"DEBUG: Обновление лида {lead_id} в Битрикс24...")
     if not B24_WEBHOOK_URL_FOR_UPDATE: return
@@ -216,6 +308,7 @@ def update_b24_lead(lead_id, comment_text):
         requests.post(f"{B24_WEBHOOK_URL_FOR_UPDATE}/crm.timeline.comment.add", json=params)
         print(f"DEBUG: Лид {lead_id} успешно обновлен.")
     except Exception as e: print(f"ERROR: Ошибка при обновлении лида в Битрикс24: {e}")
+
 def process_lead_in_background(lead_id: str):
     print(f"BACKGROUND: Начало фоновой обработки лида {lead_id}.")
     lead_data = get_lead_data_from_b24(lead_id)
@@ -229,9 +322,11 @@ def process_lead_in_background(lead_id: str):
         print(f"BACKGROUND ERROR: {error_message}")
         update_b24_lead(lead_id, error_message)
         return
+    
     full_input_prompt = f"{system_prompt}\n\nClient request:\n{task_text}"
     print(f"BACKGROUND: Запрос к ИИ для лида {lead_id} сформирован. Отправка...")
     try:
+        # get_ai_response уже содержит логику USE_RAG
         ai_response_text = get_ai_response(model_name, full_input_prompt, task_text)
         print(f"BACKGROUND: Ответ от ИИ для лида {lead_id} получен.")
     except Exception as e:
@@ -239,6 +334,7 @@ def process_lead_in_background(lead_id: str):
         print(f"BACKGROUND ERROR: {ai_response_text}")
     update_b24_lead(lead_id, ai_response_text)
     print(f"BACKGROUND: Фоновая обработка лида {lead_id} завершена успешно.")
+
 @app.post("/b24-hook-a8xZk7pQeR1fG3hJkL")
 async def b24_hook(req: Request, background_tasks: BackgroundTasks):
     print("DEBUG: Запрос от Битрикс24 получен.")
