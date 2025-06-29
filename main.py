@@ -5,9 +5,10 @@ import requests
 import subprocess
 import secrets
 from fastapi import FastAPI, Request, HTTPException, Depends, Form
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse  # <<< ИЗМЕНЕНИЕ
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel  # <<< ИЗМЕНЕНИЕ
 
 # --- Общие настройки ---
 app = FastAPI()
@@ -94,6 +95,40 @@ async def save_settings(
     return {"status": "ok"}
 
 
+# --- Тестовый чат в админке (НОВЫЙ РАЗДЕЛ) ---
+
+class ChatRequest(BaseModel):
+    user_message: str
+
+@app.post("/api/chat")
+async def handle_chat(
+    chat_request: ChatRequest,
+    username: str = Depends(get_current_username)
+):
+    try:
+        # Читаем те же настройки, что и для Битрикса
+        with open(PROMPT_FILE, "r") as f: system_prompt = f.read().strip()
+        with open(CURRENT_MODEL_FILE, "r") as f: model_name = f.read().strip()
+    except FileNotFoundError:
+        return JSONResponse(status_code=500, content={"ai_response": "Ошибка: Файлы настроек (prompt.txt или current_model.txt) не найдены."})
+
+    # Формируем промпт так же, как для Битрикса, но с сообщением из чата
+    full_input_prompt = f"{system_prompt}\n\n{chat_request.user_message}"
+
+    try:
+        # Вызываем ИИ с теми же параметрами
+        response = client.responses.create(
+            model=model_name,
+            input=full_input_prompt,
+            tools=[{"type": "web_search_preview"}],
+        )
+        ai_response_text = response.output_text
+    except Exception as e:
+        ai_response_text = f"Ошибка при обращении к OpenAI: {str(e)}"
+
+    return {"ai_response": ai_response_text}
+
+
 # --- Логика для Битрикс24 ---
 
 def get_lead_data_from_b24(lead_id):
@@ -141,7 +176,6 @@ async def b24_hook(req: Request):
     task_text = lead_data.get("COMMENTS", "Текст ТЗ не найден.")
     print(f"DEBUG: Текст ТЗ лида {lead_id} получен.")
 
-    # Читаем промпт и модель из файлов
     try:
         with open(PROMPT_FILE, "r") as f: system_prompt = f.read().strip()
         with open(CURRENT_MODEL_FILE, "r") as f: model_name = f.read().strip()
@@ -164,9 +198,8 @@ async def b24_hook(req: Request):
     except Exception as e:
         ai_response_text = f"Ошибка при обращении к OpenAI с web_search: {str(e)}"
         print(f"ERROR: {ai_response_text}")
-        # Если произошла ошибка с ИИ, все равно попытаемся обновить лид с сообщением об ошибке
         update_b24_lead(lead_id, ai_response_text) 
-        return {"status": "error", "message": ai_response_text} # Возвращаем ошибку для FastAPI
+        return {"status": "error", "message": ai_response_text}
 
     update_b24_lead(lead_id, ai_response_text)
     print("DEBUG: Обработка завершена успешно.")
