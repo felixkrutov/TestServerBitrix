@@ -5,3 +5,4 @@ requests
 python-multipart
 jinja2
 google-generativeai
+google-api-python-client
