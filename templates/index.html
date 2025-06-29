@@ -9,7 +9,8 @@
     <style>
         body { background-color: #212529; color: #fff; }
         .container { max-width: 1140px; }
-        h1, h2, h3, h4, h5, h6, p, label, .card-header, .nav-link { color: #f8f9fa !important; }
+        /* ИЗМЕНЕНО: Теперь все эти элементы будут чисто белыми */
+        h1, h2, h3, h4, h5, h6, p, label, .card-header, .nav-link { color: #fff !important; } 
         .card { background-color: #343a40; border-color: #495057; }
         .card-header { background-color: #495057; border-bottom: 1px solid #495057; }
         .form-control, .form-select { background-color: #495057; color: #fff; border-color: #6c757d; }
@@ -120,7 +121,8 @@
                         <div class="form-group mb-3 form-check form-switch">
                             <input type="checkbox" class="form-check-input" id="use_rag_toggle" name="use_rag" value="true">
                             <label class="form-check-label" for="use_rag_toggle">Использовать Базу Знаний (RAG)</label>
-                            <small class="form-text text-muted">Отключите, если хотите, чтобы ИИ отвечал только на основе системного промпта, без использования загруженных документов.</small>
+                            <!-- ИЗМЕНЕНО: Класс text-muted заменен на text-light -->
+                            <small class="form-text text-light">Отключите, если хотите, чтобы ИИ отвечал только на основе системного промпта, без использования загруженных документов.</small>
                         </div>
                         <!-- КОНЕЦ НОВОГО ПЕРЕКЛЮЧАТЕЛЯ -->
 
