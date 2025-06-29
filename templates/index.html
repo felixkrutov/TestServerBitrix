@@ -3,14 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Админка для ИИ</title>
+    <title>Панель управления "Николай"</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body { background-color: #212529; color: #fff; }
-        h1, h2, h3, h4, h5, h6,
-        p, label, .card-header {
-            color: #f8f9fa !important;
-        }
+        .container { max-width: 1140px; }
+        h1, h2, h3, h4, h5, h6, p, label, .card-header, .nav-link { color: #f8f9fa !important; }
         .card { background-color: #343a40; border-color: #495057; }
         .card-header { background-color: #495057; border-bottom: 1px solid #495057; }
         .form-control, .form-select { background-color: #495057; color: #fff; border-color: #6c757d; }
@@ -24,14 +22,21 @@
         #chat-history p { margin-bottom: 0.5rem; padding: 0.5rem 1rem; border-radius: 0.5rem; max-width: 80%; word-wrap: break-word; width: fit-content; }
         .user-message { background-color: #0d6efd; margin-left: auto; text-align: right; }
         .ai-message { background-color: #495057; margin-right: auto; text-align: left; white-space: pre-wrap; }
-        .document-item { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; border-bottom: 1px solid #495057; }
+        .document-item { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; border-bottom: 1px solid #495057; }
+        .document-item span { color: #f8f9fa; } /* Белый цвет для имени файла */
+        .nav-tabs .nav-link { border-color: #495057; }
+        .nav-tabs .nav-link.active { background-color: #495057; border-color: #495057; }
+        .upload-area { display: flex; gap: 1rem; align-items: center; }
+        .upload-area .btn-upload { flex-shrink: 0; }
+        .file-name-display { background-color: #495057; padding: 0.375rem 0.75rem; border-radius: 0.25rem; border: 1px solid #6c757d; flex-grow: 1; text-align: left; color: #ccc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        #uploadButton:disabled { background-color: #6c757d; cursor: not-allowed; }
     </style>
 </head>
 <body>
     <div class="container mt-4">
         <h1 class="mb-4">Панель управления "Николай"</h1>
 
-        <!-- Статус и Логи -->
+        <!-- Статус и Логи (всегда видимы) -->
         <div class="card mb-4">
             <div class="card-header">Статус и Логи</div>
             <div class="card-body">
@@ -41,64 +46,114 @@
             </div>
         </div>
 
-        <!-- База Знаний (НОВЫЙ БЛОК) -->
-        <div class="card mb-4">
-            <div class="card-header">База Знаний (RAG)</div>
-            <div class="card-body">
-                <h5>Загрузить новый документ</h5>
-                <form id="uploadForm" class="input-group mb-3">
-                    <input type="file" class="form-control" id="documentFile" required>
-                    <button class="btn btn-outline-secondary" type="submit">Загрузить</button>
-                </form>
-                <div id="uploadStatus"></div>
-                <h5 class="mt-4">Загруженные документы</h5>
-                <div id="documentList">Загрузка списка...</div>
-            </div>
-        </div>
+        <!-- Навигация по вкладкам -->
+        <ul class="nav nav-tabs" id="myTab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="rag-tab" data-bs-toggle="tab" data-bs-target="#rag-tab-pane" type="button" role="tab">База Знаний (RAG)</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="chat-tab" data-bs-toggle="tab" data-bs-target="#chat-tab-pane" type="button" role="tab">Тестовый чат</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="settings-tab" data-bs-toggle="tab" data-bs-target="#settings-tab-pane" type="button" role="tab">Настройки</button>
+            </li>
+        </ul>
 
-        <!-- Тестовый чат -->
-        <div class="card mb-4">
-            <div class="card-header">Тестовый чат для отладки промптов</div>
-            <div class="card-body">
-                <div id="chat-history"></div>
-                <div class="input-group">
-                    <textarea class="form-control" id="user-input" placeholder="Введите ваш запрос здесь... (Shift+Enter для переноса строки)" rows="3"></textarea>
-                    <button class="btn btn-primary" id="send-btn">Отправить</button>
-                </div>
-                <div id="loading-indicator" class="mt-2" style="display: none;">
-                    <div class="spinner-border spinner-border-sm" role="status"></div>
-                    <span>Думаю...</span>
+        <!-- Содержимое вкладок -->
+        <div class="tab-content" id="myTabContent">
+            <!-- ВКЛАДКА: База Знаний -->
+            <div class="tab-pane fade show active" id="rag-tab-pane" role="tabpanel">
+                <div class="card card-body border-top-0 rounded-bottom">
+                    <h5>Загрузить новый документ</h5>
+                    <form id="uploadForm" class="mb-3">
+                        <div class="upload-area">
+                            <label for="documentFile" class="btn btn-secondary btn-upload">Выберите файл</label>
+                            <span id="fileNameDisplay" class="file-name-display">Файл не выбран</span>
+                            <button class="btn btn-success" type="submit" id="uploadButton" disabled>Загрузить</button>
+                        </div>
+                        <input type="file" id="documentFile" class="d-none">
+                    </form>
+                    <div id="uploadStatus"></div>
+                    <h5 class="mt-4">Загруженные документы</h5>
+                    <div id="documentList">Загрузка списка...</div>
                 </div>
             </div>
-        </div>
 
-        <!-- Настройки -->
-        <div class="card">
-            <div class="card-header">Настройки Промпта и Модели</div>
-            <div class="card-body">
-                <form id="settingsForm">
-                    <div class="mb-3">
-                        <label for="model" class="form-label">Выбрать модель</label>
-                        <select class="form-select" id="model" name="model"></select>
+            <!-- ВКЛАДКА: Тестовый чат -->
+            <div class="tab-pane fade" id="chat-tab-pane" role="tabpanel">
+                <div class="card card-body border-top-0 rounded-bottom">
+                    <div id="chat-history"></div>
+                    <div class="input-group">
+                        <textarea class="form-control" id="user-input" placeholder="Введите ваш запрос здесь... (Shift+Enter для переноса строки)" rows="3"></textarea>
+                        <button class="btn btn-primary" id="send-btn">Отправить</button>
                     </div>
-                    <div class="mb-3">
-                        <label for="prompt" class="form-label">Системный промпт</label>
-                        <textarea class="form-control" id="prompt" name="prompt" rows="10"></textarea>
+                    <div id="loading-indicator" class="mt-2" style="display: none;">
+                        <div class="spinner-border spinner-border-sm" role="status"></div>
+                        <span>Думаю...</span>
                     </div>
-                    <button type="submit" class="btn btn-success">Сохранить и Перезапустить</button>
-                </form>
-                <div id="saveStatus" class="mt-3"></div>
+                </div>
+            </div>
+
+            <!-- ВКЛАДКА: Настройки -->
+            <div class="tab-pane fade" id="settings-tab-pane" role="tabpanel">
+                <div class="card card-body border-top-0 rounded-bottom">
+                    <form id="settingsForm">
+                        <div class="mb-3">
+                            <label for="model" class="form-label">Выбрать модель</label>
+                            <select class="form-select" id="model" name="model"></select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="prompt" class="form-label">Системный промпт</label>
+                            <textarea class="form-control" id="prompt" name="prompt" rows="10"></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-success">Сохранить и Перезапустить</button>
+                    </form>
+                    <div id="saveStatus" class="mt-3"></div>
+                </div>
             </div>
         </div>
     </div>
 
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-    // --- Логика для Базы Знаний (НОВЫЙ СКРИПТ) ---
+    // --- Логика для Базы Знаний ---
     const uploadForm = document.getElementById('uploadForm');
     const documentFile = document.getElementById('documentFile');
+    const uploadButton = document.getElementById('uploadButton');
+    const fileNameDisplay = document.getElementById('fileNameDisplay');
     const uploadStatus = document.getElementById('uploadStatus');
     const documentList = document.getElementById('documentList');
 
+    documentFile.addEventListener('change', () => {
+        if (documentFile.files.length > 0) {
+            fileNameDisplay.textContent = documentFile.files[0].name;
+            fileNameDisplay.style.color = '#fff';
+            uploadButton.disabled = false;
+        } else {
+            fileNameDisplay.textContent = 'Файл не выбран';
+            fileNameDisplay.style.color = '#ccc';
+            uploadButton.disabled = true;
+        }
+    });
+
+    async function fetchDocuments() { /* ... код без изменений ... */ }
+    uploadForm.addEventListener('submit', async (e) => { /* ... код без изменений ... */ });
+    async function deleteDocument(filename) { /* ... код без изменений ... */ }
+
+    // --- Остальная логика (без изменений) ---
+    const sendBtn = document.getElementById('send-btn');
+    const userInput = document.getElementById('user-input');
+    const chatHistory = document.getElementById('chat-history');
+    const loadingIndicator = document.getElementById('loading-indicator');
+    function addMessageToHistory(message, sender) { /* ... код без изменений ... */ }
+    sendBtn.addEventListener('click', async () => { /* ... код без изменений ... */ });
+    userInput.addEventListener('keydown', (e) => { /* ... код без изменений ... */ });
+    async function fetchStatus() { /* ... код без изменений ... */ }
+    async function fetchLogs() { /* ... код без изменений ... */ }
+    async function fetchSettings() { /* ... код без изменений ... */ }
+    document.getElementById('settingsForm').addEventListener('submit', async function(e) { /* ... код без изменений ... */ });
+
+    // --- Полный код для всех функций ---
     async function fetchDocuments() {
         documentList.innerHTML = 'Обновление...';
         try {
@@ -111,10 +166,7 @@
                 data.documents.forEach(doc => {
                     const docElement = document.createElement('div');
                     docElement.className = 'document-item';
-                    docElement.innerHTML = `
-                        <span>${doc}</span>
-                        <button class="btn btn-danger btn-sm" onclick="deleteDocument('${doc}')">Удалить</button>
-                    `;
+                    docElement.innerHTML = `<span>${doc}</span><button class="btn btn-danger btn-sm" onclick="deleteDocument('${doc}')">Удалить</button>`;
                     documentList.appendChild(docElement);
                 });
             }
@@ -122,55 +174,38 @@
             documentList.innerHTML = '<p class="text-danger">Ошибка загрузки списка документов.</p>';
         }
     }
-
     uploadForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        if (!documentFile.files[0]) {
-            alert('Выберите файл для загрузки.');
-            return;
-        }
+        if (!documentFile.files[0]) { alert('Выберите файл для загрузки.'); return; }
         const formData = new FormData();
         formData.append('file', documentFile.files[0]);
         uploadStatus.innerHTML = '<div class="alert alert-info">Загрузка и обработка файла...</div>';
         try {
-            const response = await fetch('/api/upload-document', {
-                method: 'POST',
-                body: formData
-            });
+            const response = await fetch('/api/upload-document', { method: 'POST', body: formData });
             const result = await response.json();
             if (response.ok) {
                 uploadStatus.innerHTML = `<div class="alert alert-success">${result.message}</div>`;
-                fetchDocuments(); // Обновляем список файлов
-            } else {
-                throw new Error(result.detail || 'Ошибка загрузки');
-            }
+                fetchDocuments();
+            } else { throw new Error(result.detail || 'Ошибка загрузки'); }
         } catch (error) {
             uploadStatus.innerHTML = `<div class="alert alert-danger">${error.message}</div>`;
         }
-        documentFile.value = ''; // Сбрасываем поле выбора файла
+        documentFile.value = '';
+        fileNameDisplay.textContent = 'Файл не выбран';
+        fileNameDisplay.style.color = '#ccc';
+        uploadButton.disabled = true;
         setTimeout(() => { uploadStatus.innerHTML = ''; }, 5000);
     });
-
     async function deleteDocument(filename) {
         if (!confirm(`Вы уверены, что хотите удалить файл "${filename}"?`)) return;
         try {
             const response = await fetch(`/api/documents/${filename}`, { method: 'DELETE' });
             if (response.ok) {
                 alert(`Файл "${filename}" удален.`);
-                fetchDocuments(); // Обновляем список
-            } else {
-                throw new Error('Ошибка удаления');
-            }
-        } catch (error) {
-            alert(error.message);
-        }
+                fetchDocuments();
+            } else { throw new Error('Ошибка удаления'); }
+        } catch (error) { alert(error.message); }
     }
-
-    // --- Остальная логика (без изменений) ---
-    const sendBtn = document.getElementById('send-btn');
-    const userInput = document.getElementById('user-input');
-    const chatHistory = document.getElementById('chat-history');
-    const loadingIndicator = document.getElementById('loading-indicator');
     function addMessageToHistory(message, sender) {
         const p = document.createElement('p');
         p.className = sender === 'user' ? 'user-message' : 'ai-message';
@@ -186,15 +221,8 @@
         loadingIndicator.style.display = 'block';
         sendBtn.disabled = true;
         try {
-            const response = await fetch('/api/chat', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_message: message })
-            });
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.detail || `Ошибка сервера: ${response.statusText}`);
-            }
+            const response = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_message: message }) });
+            if (!response.ok) { const errorData = await response.json(); throw new Error(errorData.detail || `Ошибка сервера: ${response.statusText}`); }
             const data = await response.json();
             addMessageToHistory(data.ai_response, 'ai');
         } catch (error) {
@@ -205,10 +233,7 @@
         }
     });
     userInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            sendBtn.click();
-        }
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendBtn.click(); }
     });
     async function fetchStatus() {
         const response = await fetch('/api/status');
@@ -216,13 +241,8 @@
         const indicator = document.getElementById('status-indicator');
         const statusText = document.getElementById('status-text');
         indicator.className = 'status-dot';
-        if (data.status === 'active') {
-            indicator.classList.add('status-ok');
-            statusText.textContent = 'Работает';
-        } else {
-            indicator.classList.add('status-fail');
-            statusText.textContent = 'Остановлен или ошибка';
-        }
+        if (data.status === 'active') { indicator.classList.add('status-ok'); statusText.textContent = 'Работает'; }
+        else { indicator.classList.add('status-fail'); statusText.textContent = 'Остановлен или ошибка'; }
     }
     async function fetchLogs() {
         const logsContainer = document.getElementById('logs');
@@ -232,9 +252,7 @@
             const data = await response.json();
             logsContainer.textContent = data.logs || 'Логи за последние 5 минут пусты.';
             logsContainer.scrollTop = logsContainer.scrollHeight;
-        } catch (error) {
-            logsContainer.textContent = 'Не удалось загрузить логи.';
-        }
+        } catch (error) { logsContainer.textContent = 'Не удалось загрузить логи.'; }
     }
     async function fetchSettings() {
         const response = await fetch('/api/settings');
@@ -246,9 +264,7 @@
             const option = document.createElement('option');
             option.value = modelName;
             option.textContent = modelName;
-            if (modelName === data.current_model) {
-                option.selected = true;
-            }
+            if (modelName === data.current_model) { option.selected = true; }
             modelSelect.appendChild(option);
         });
     }
@@ -257,25 +273,18 @@
         const formData = new FormData(this);
         const saveStatus = document.getElementById('saveStatus');
         saveStatus.innerHTML = '<div class="alert alert-info">Сохраняю...</div>';
-        const response = await fetch('/api/settings', {
-            method: 'POST',
-            body: formData
-        });
+        const response = await fetch('/api/settings', { method: 'POST', body: formData });
         const result = await response.json();
-        if (result.status === 'ok') {
-            saveStatus.innerHTML = '<div class="alert alert-success">Настройки сохранены! Сервис перезапускается.</div>';
-        } else {
-            saveStatus.innerHTML = '<div class="alert alert-danger">Ошибка сохранения.</div>';
-        }
+        if (result.status === 'ok') { saveStatus.innerHTML = '<div class="alert alert-success">Настройки сохранены! Сервис перезапускается.</div>'; }
+        else { saveStatus.innerHTML = '<div class="alert alert-danger">Ошибка сохранения.</div>'; }
         setTimeout(() => { saveStatus.innerHTML = ''; }, 5000);
     });
 
-    // Первоначальная загрузка всех данных
     window.onload = () => {
         fetchStatus();
         fetchLogs();
         fetchSettings();
-        fetchDocuments(); // Загружаем список документов при старте
+        fetchDocuments();
         setInterval(fetchStatus, 5000);
     };
 </script>
