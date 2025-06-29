@@ -12,6 +12,7 @@ from pydantic import BaseModel
 # --- Импорты для API ---
 import openai
 import google.generativeai as genai 
+from googleapiclient.discovery import build # Для Google Custom Search
 
 # --- Общие настройки ---
 app = FastAPI()
@@ -26,6 +27,8 @@ PROMPT_FILE = "prompt.txt"
 # --- Получение всех ключей из переменных окружения ---
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") 
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") # Для Google Custom Search
+SEARCH_ENGINE_ID = os.getenv("SEARCH_ENGINE_ID") # Для Google Custom Search
 
 B24_WEBHOOK_URL_FOR_UPDATE = os.getenv("B24_WEBHOOK_URL_FOR_UPDATE")
 B24_SECRET_TOKEN = os.getenv("B24_SECRET_TOKEN")
@@ -39,11 +42,51 @@ if GEMINI_API_KEY:
 else:
     print("WARNING: GEMINI_API_KEY не найден. Функционал Gemini будет недоступен.")
 
-# --- Универсальная функция для вызова ИИ (УПРОЩЕННАЯ ВЕРСИЯ БЕЗ ПОИСКА ДЛЯ GEMINI) ---
+# --- Инструмент для поиска в интернете (для Gemini) ---
+def search_internet(query: str):
+    """Ищет в интернете с помощью Google Custom Search API по заданному запросу."""
+    print(f"TOOL USE: Выполняется поиск в интернете по запросу: '{query}'")
+    if not GOOGLE_API_KEY or not SEARCH_ENGINE_ID:
+        return "Ошибка: GOOGLE_API_KEY или SEARCH_ENGINE_ID не настроены в переменных окружения."
+    
+    try:
+        service = build("customsearch", "v1", developerKey=GOOGLE_API_KEY)
+        res = service.cse().list(q=query, cx=SEARCH_ENGINE_ID, num=3).execute()
+        items = res.get('items', [])
+        if not items:
+            return "Поиск не дал результатов."
+        snippets = []
+        for item in items:
+            snippets.append(f"Заголовок: {item.get('title', '')}\nФрагмент: {item.get('snippet', '')}\nИсточник: {item.get('link', '')}")
+        return "\n\n".join(snippets)
+    except Exception as e:
+        print(f"TOOL ERROR: Ошибка при поиске Google: {e}")
+        return f"Ошибка при выполнении поиска: {e}"
+
+# Описание инструмента для Gemini
+gemini_tools = [
+    {
+        "function_declarations": [
+            {
+                "name": "search_internet",
+                "description": "Ищет в интернете актуальную информацию, новости, факты по заданному запросу, если в текущем контексте нет ответа.",
+                "parameters": {
+                    "type_": "OBJECT",
+                    "properties": {
+                        "query": {"type_": "STRING", "description": "Поисковый запрос на русском или английском языке"}
+                    },
+                    "required": ["query"]
+                }
+            }
+        ]
+    }
+]
+
+# --- Универсальная функция для вызова ИИ (САМАЯ НАДЕЖНАЯ ВЕРСИЯ) ---
 def get_ai_response(model_name: str, full_input_prompt: str):
     """
-    Получает ответ от ИИ, автоматически выбирая API (OpenAI или Gemini).
-    Для Gemini поиск отключен.
+    Получает ответ от ИИ, автоматически выбирая API (OpenAI или Gemini)
+    и обрабатывая инструменты (поиск в интернете).
     """
     
     # --- Вариант 1: OpenAI ---
@@ -54,27 +97,51 @@ def get_ai_response(model_name: str, full_input_prompt: str):
         response = openai_client.responses.create(
             model=model_name,
             input=full_input_prompt,
-            tools=[{"type": "web_search_preview"}] # Встроенный поиск OpenAI
+            tools=[{"type": "web_search_preview"}]
         )
         return response.output_text
 
-    # --- Вариант 2: Gemini (без поиска) ---
+    # --- Вариант 2: Gemini ---
     elif model_name.startswith("gemini-"):
-        print(f"INFO: Используется Gemini API для модели {model_name} (без поиска)")
+        print(f"INFO: Используется Gemini API для модели {model_name}")
         if not GEMINI_API_KEY:
             raise ValueError("GEMINI_API_KEY не установлен.")
             
-        model = genai.GenerativeModel(model_name)
-        response = model.generate_content(full_input_prompt)
-        return response.text
+        model = genai.GenerativeModel(model_name, tools=gemini_tools)
+        chat = model.start_chat()
+        response = chat.send_message(full_input_prompt)
+        
+        try:
+            # Пытаемся получить 'function_call' из ответа
+            function_call = response.candidates[0].content.parts[0].function_call
+            
+            # Проверяем, что у вызова есть имя и это наш инструмент
+            if hasattr(function_call, 'name') and function_call.name == "search_internet":
+                query = function_call.args['query']
+                search_result = search_internet(query=query)
+                response_after_search = chat.send_message(
+                    genai.types.Part(
+                        function_response=genai.types.FunctionResponse(
+                            name='search_internet',
+                            response={'result': search_result},
+                        ),
+                    ),
+                )
+                return response_after_search.text
+            else:
+                # ИИ запросил инструмент, но он некорректный
+                return "Ошибка: ИИ попытался использовать внутренний инструмент, но не смог. Попробуйте переформулировать запрос."
+
+        except (IndexError, AttributeError, ValueError):
+            # Если произошла любая ошибка при доступе к function_call,
+            # значит, это обычный текстовый ответ.
+            return response.text
 
     # --- Вариант 3: Неизвестный провайдер ---
     else:
         raise ValueError(f"Ошибка: Неизвестный провайдер для модели '{model_name}'.")
 
 # --- Админка, чат и логика Битрикс24 ---
-# (Этот код использует универсальную функцию get_ai_response)
-
 def get_current_username(credentials: HTTPBasicCredentials = Depends(security)):
     correct_username = secrets.compare_digest(credentials.username, ADMIN_USERNAME)
     correct_password = secrets.compare_digest(credentials.password, ADMIN_PASSWORD)
