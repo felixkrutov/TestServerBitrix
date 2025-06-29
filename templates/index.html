@@ -20,47 +20,39 @@
         .status-ok { background-color: #198754; }
         .status-fail { background-color: #dc3545; }
         #logs { background-color: #1a1a1a; color: #f8f9fa; font-family: monospace; white-space: pre-wrap; height: 400px; overflow-y: scroll; border: 1px solid #495057; }
-        
-        #chat-history {
-            background-color: #2c3034;
-            height: 400px;
-            overflow-y: scroll;
-            border: 1px solid #495057;
-            padding: 10px;
-            margin-bottom: 1rem;
-        }
-        #chat-history p {
-            margin-bottom: 0.5rem;
-            padding: 0.5rem 1rem;
-            border-radius: 0.5rem;
-            max-width: 80%;
-            word-wrap: break-word;
-            width: fit-content;
-        }
-        .user-message {
-            background-color: #0d6efd;
-            margin-left: auto;
-            text-align: right;
-        }
-        .ai-message {
-            background-color: #495057;
-            margin-right: auto;
-            text-align: left;
-            white-space: pre-wrap;
-        }
+        #chat-history { background-color: #2c3034; height: 400px; overflow-y: scroll; border: 1px solid #495057; padding: 10px; margin-bottom: 1rem; }
+        #chat-history p { margin-bottom: 0.5rem; padding: 0.5rem 1rem; border-radius: 0.5rem; max-width: 80%; word-wrap: break-word; width: fit-content; }
+        .user-message { background-color: #0d6efd; margin-left: auto; text-align: right; }
+        .ai-message { background-color: #495057; margin-right: auto; text-align: left; white-space: pre-wrap; }
+        .document-item { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; border-bottom: 1px solid #495057; }
     </style>
 </head>
 <body>
     <div class="container mt-4">
         <h1 class="mb-4">Панель управления "Николай"</h1>
 
-        <!-- Статус и Логи (ВОЗВРАЩЕНО) -->
+        <!-- Статус и Логи -->
         <div class="card mb-4">
             <div class="card-header">Статус и Логи</div>
             <div class="card-body">
                 <p>Статус сервиса: <span id="status-indicator" class="status-dot"></span> <span id="status-text">Загрузка...</span></p>
                 <button class="btn btn-primary mb-2" onclick="fetchLogs()">Обновить логи</button>
                 <div id="logs" class="p-2 rounded">Загрузка логов...</div>
+            </div>
+        </div>
+
+        <!-- База Знаний (НОВЫЙ БЛОК) -->
+        <div class="card mb-4">
+            <div class="card-header">База Знаний (RAG)</div>
+            <div class="card-body">
+                <h5>Загрузить новый документ</h5>
+                <form id="uploadForm" class="input-group mb-3">
+                    <input type="file" class="form-control" id="documentFile" required>
+                    <button class="btn btn-outline-secondary" type="submit">Загрузить</button>
+                </form>
+                <div id="uploadStatus"></div>
+                <h5 class="mt-4">Загруженные документы</h5>
+                <div id="documentList">Загрузка списка...</div>
             </div>
         </div>
 
@@ -74,21 +66,19 @@
                     <button class="btn btn-primary" id="send-btn">Отправить</button>
                 </div>
                 <div id="loading-indicator" class="mt-2" style="display: none;">
-                    <div class="spinner-border spinner-border-sm" role="status">
-                        <span class="visually-hidden">Loading...</span>
-                    </div>
+                    <div class="spinner-border spinner-border-sm" role="status"></div>
                     <span>Думаю...</span>
                 </div>
             </div>
         </div>
 
-        <!-- Настройки (ВОЗВРАЩЕНО) -->
+        <!-- Настройки -->
         <div class="card">
             <div class="card-header">Настройки Промпта и Модели</div>
             <div class="card-body">
                 <form id="settingsForm">
                     <div class="mb-3">
-                        <label for="model" class="form-label">Выбрать модель OpenAI</label>
+                        <label for="model" class="form-label">Выбрать модель</label>
                         <select class="form-select" id="model" name="model"></select>
                     </div>
                     <div class="mb-3">
@@ -103,12 +93,84 @@
     </div>
 
 <script>
-    // --- Логика чата ---
+    // --- Логика для Базы Знаний (НОВЫЙ СКРИПТ) ---
+    const uploadForm = document.getElementById('uploadForm');
+    const documentFile = document.getElementById('documentFile');
+    const uploadStatus = document.getElementById('uploadStatus');
+    const documentList = document.getElementById('documentList');
+
+    async function fetchDocuments() {
+        documentList.innerHTML = 'Обновление...';
+        try {
+            const response = await fetch('/api/documents');
+            const data = await response.json();
+            documentList.innerHTML = '';
+            if (data.documents.length === 0) {
+                documentList.innerHTML = '<p>Документы не загружены.</p>';
+            } else {
+                data.documents.forEach(doc => {
+                    const docElement = document.createElement('div');
+                    docElement.className = 'document-item';
+                    docElement.innerHTML = `
+                        <span>${doc}</span>
+                        <button class="btn btn-danger btn-sm" onclick="deleteDocument('${doc}')">Удалить</button>
+                    `;
+                    documentList.appendChild(docElement);
+                });
+            }
+        } catch (error) {
+            documentList.innerHTML = '<p class="text-danger">Ошибка загрузки списка документов.</p>';
+        }
+    }
+
+    uploadForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!documentFile.files[0]) {
+            alert('Выберите файл для загрузки.');
+            return;
+        }
+        const formData = new FormData();
+        formData.append('file', documentFile.files[0]);
+        uploadStatus.innerHTML = '<div class="alert alert-info">Загрузка и обработка файла...</div>';
+        try {
+            const response = await fetch('/api/upload-document', {
+                method: 'POST',
+                body: formData
+            });
+            const result = await response.json();
+            if (response.ok) {
+                uploadStatus.innerHTML = `<div class="alert alert-success">${result.message}</div>`;
+                fetchDocuments(); // Обновляем список файлов
+            } else {
+                throw new Error(result.detail || 'Ошибка загрузки');
+            }
+        } catch (error) {
+            uploadStatus.innerHTML = `<div class="alert alert-danger">${error.message}</div>`;
+        }
+        documentFile.value = ''; // Сбрасываем поле выбора файла
+        setTimeout(() => { uploadStatus.innerHTML = ''; }, 5000);
+    });
+
+    async function deleteDocument(filename) {
+        if (!confirm(`Вы уверены, что хотите удалить файл "${filename}"?`)) return;
+        try {
+            const response = await fetch(`/api/documents/${filename}`, { method: 'DELETE' });
+            if (response.ok) {
+                alert(`Файл "${filename}" удален.`);
+                fetchDocuments(); // Обновляем список
+            } else {
+                throw new Error('Ошибка удаления');
+            }
+        } catch (error) {
+            alert(error.message);
+        }
+    }
+
+    // --- Остальная логика (без изменений) ---
     const sendBtn = document.getElementById('send-btn');
     const userInput = document.getElementById('user-input');
     const chatHistory = document.getElementById('chat-history');
     const loadingIndicator = document.getElementById('loading-indicator');
-
     function addMessageToHistory(message, sender) {
         const p = document.createElement('p');
         p.className = sender === 'user' ? 'user-message' : 'ai-message';
@@ -116,7 +178,6 @@
         chatHistory.appendChild(p);
         chatHistory.scrollTop = chatHistory.scrollHeight;
     }
-
     sendBtn.addEventListener('click', async () => {
         const message = userInput.value.trim();
         if (!message) return;
@@ -143,15 +204,12 @@
             sendBtn.disabled = false;
         }
     });
-
     userInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             sendBtn.click();
         }
     });
-
-    // --- Остальная логика ---
     async function fetchStatus() {
         const response = await fetch('/api/status');
         const data = await response.json();
@@ -166,21 +224,18 @@
             statusText.textContent = 'Остановлен или ошибка';
         }
     }
-
     async function fetchLogs() {
-    const logsContainer = document.getElementById('logs');
-    logsContainer.textContent = 'Обновление...';
-    try {
-        const response = await fetch('/api/logs');
-        const data = await response.json();
-        logsContainer.textContent = data.logs || 'Логи за последние 5 минут пусты.';
-        // <<< ВОТ ОНО, ГЛАВНОЕ ИЗМЕНЕНИЕ >>>
-        logsContainer.scrollTop = logsContainer.scrollHeight;
-    } catch (error) {
-        logsContainer.textContent = 'Не удалось загрузить логи.';
+        const logsContainer = document.getElementById('logs');
+        logsContainer.textContent = 'Обновление...';
+        try {
+            const response = await fetch('/api/logs');
+            const data = await response.json();
+            logsContainer.textContent = data.logs || 'Логи за последние 5 минут пусты.';
+            logsContainer.scrollTop = logsContainer.scrollHeight;
+        } catch (error) {
+            logsContainer.textContent = 'Не удалось загрузить логи.';
+        }
     }
-}
-
     async function fetchSettings() {
         const response = await fetch('/api/settings');
         const data = await response.json();
@@ -197,7 +252,6 @@
             modelSelect.appendChild(option);
         });
     }
-
     document.getElementById('settingsForm').addEventListener('submit', async function(e) {
         e.preventDefault();
         const formData = new FormData(this);
@@ -216,10 +270,12 @@
         setTimeout(() => { saveStatus.innerHTML = ''; }, 5000);
     });
 
+    // Первоначальная загрузка всех данных
     window.onload = () => {
         fetchStatus();
         fetchLogs();
         fetchSettings();
+        fetchDocuments(); // Загружаем список документов при старте
         setInterval(fetchStatus, 5000);
     };
 </script>
