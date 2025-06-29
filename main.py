@@ -30,8 +30,6 @@ ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin")
 client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
 
-# --- Админка для Бати ---
-
 # Функция для проверки пароля
 def get_current_username(credentials: HTTPBasicCredentials = Depends(security)):
     correct_username = secrets.compare_digest(credentials.username, ADMIN_USERNAME)
