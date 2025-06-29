@@ -113,7 +113,7 @@ async def handle_chat(
         with open(CURRENT_MODEL_FILE, "r") as f: model_name = f.read().strip()
     except FileNotFoundError:
         return JSONResponse(status_code=500, content={"ai_response": "Ошибка: Файлы настроек (prompt.txt или current_model.txt) не найдены."})
-    full_input_prompt = f"{system_prompt}\n\n{chat_request.user_message}"
+    full_input_prompt = f"{system_prompt}\n\nПроанализируй следующии характиристики клиента и подготовь ответ для клиента: \n\n{chat_request.user_message}"
     try:
         response = client.responses.create(
             model=model_name,
