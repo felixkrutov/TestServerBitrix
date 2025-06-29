@@ -8,12 +8,10 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
-import json
 
 # --- Импорты для API ---
 import openai
 import google.generativeai as genai 
-from googleapiclient.discovery import build # Для Google Custom Search
 
 # --- Общие настройки ---
 app = FastAPI()
@@ -28,8 +26,6 @@ PROMPT_FILE = "prompt.txt"
 # --- Получение всех ключей из переменных окружения ---
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") 
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") 
-SEARCH_ENGINE_ID = os.getenv("SEARCH_ENGINE_ID")
 
 B24_WEBHOOK_URL_FOR_UPDATE = os.getenv("B24_WEBHOOK_URL_FOR_UPDATE")
 B24_SECRET_TOKEN = os.getenv("B24_SECRET_TOKEN")
@@ -41,56 +37,40 @@ openai_client = openai.OpenAI(api_key=OPENAI_API_KEY)
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 else:
-    print("WARNING: GEMINI_API_KEY не найден.")
+    print("WARNING: GEMINI_API_KEY не найден. Функционал Gemini будет недоступен.")
 
-# --- Инструмент для поиска в интернете (для Gemini) ---
-def search_internet(query: str):
-    print(f"TOOL USE: Выполняется поиск в интернете по запросу: '{query}'")
-    if not GOOGLE_API_KEY or not SEARCH_ENGINE_ID: return "Ошибка: GOOGLE_API_KEY или SEARCH_ENGINE_ID не настроены."
-    try:
-        service = build("customsearch", "v1", developerKey=GOOGLE_API_KEY)
-        res = service.cse().list(q=query, cx=SEARCH_ENGINE_ID, num=3).execute()
-        items = res.get('items', [])
-        if not items: return "Поиск не дал результатов."
-        snippets = [f"Заголовок: {item.get('title', '')}\nФрагмент: {item.get('snippet', '')}\nИсточник: {item.get('link', '')}" for item in items]
-        return "\n\n".join(snippets)
-    except Exception as e:
-        print(f"TOOL ERROR: Ошибка при поиске Google: {e}")
-        return f"Ошибка при выполнении поиска: {e}"
-
-# Описание инструмента для Gemini
-gemini_tools = [{"function_declarations": [{"name": "search_internet", "description": "Ищет в интернете актуальную информацию, если ее нет в предоставленном контексте.", "parameters": {"type_": "OBJECT", "properties": {"query": {"type_": "STRING", "description": "Поисковый запрос"}}, "required": ["query"]}}]}]
-available_tools = {"search_internet": search_internet}
-
-# --- Универсальная функция для вызова ИИ ---
+# --- Универсальная функция для вызова ИИ (УПРОЩЕННАЯ ВЕРСИЯ БЕЗ ПОИСКА ДЛЯ GEMINI) ---
 def get_ai_response(model_name: str, full_input_prompt: str):
+    """
+    Получает ответ от ИИ, автоматически выбирая API (OpenAI или Gemini).
+    Для Gemini поиск отключен.
+    """
+    
+    # --- Вариант 1: OpenAI ---
     if model_name.startswith("gpt-") or model_name.startswith("o4-"):
         print(f"INFO: Используется OpenAI API для модели {model_name}")
-        if not OPENAI_API_KEY: raise ValueError("OPENAI_API_KEY не установлен.")
-        response = openai_client.responses.create(model=model_name, input=full_input_prompt, tools=[{"type": "web_search_preview"}])
+        if not OPENAI_API_KEY:
+            raise ValueError("OPENAI_API_KEY не установлен.")
+        response = openai_client.responses.create(
+            model=model_name,
+            input=full_input_prompt,
+            tools=[{"type": "web_search_preview"}] # Встроенный поиск OpenAI
+        )
         return response.output_text
 
+    # --- Вариант 2: Gemini (без поиска) ---
     elif model_name.startswith("gemini-"):
-        print(f"INFO: Используется Gemini API для модели {model_name}")
-        if not GEMINI_API_KEY: raise ValueError("GEMINI_API_KEY не установлен.")
-        model = genai.GenerativeModel(model_name, tools=gemini_tools)
-        chat = model.start_chat()
-        response = chat.send_message(full_input_prompt)
-        
-        while True:
-            try:
-                function_call = response.candidates[0].content.parts[0].function_call
-                if not hasattr(function_call, 'name') or function_call.name not in available_tools: break
-                
-                function_name = function_call.name
-                function_to_call = available_tools[function_name]
-                function_args = {key: value for key, value in function_call.args.items()}
-                function_response_str = function_to_call(**function_args)
-                
-                response = chat.send_message(genai.types.Part(function_response=genai.types.FunctionResponse(name=function_name, response={'result': function_response_str})))
-            except (IndexError, AttributeError, ValueError): break
+        print(f"INFO: Используется Gemini API для модели {model_name} (без поиска)")
+        if not GEMINI_API_KEY:
+            raise ValueError("GEMINI_API_KEY не установлен.")
+            
+        model = genai.GenerativeModel(model_name)
+        response = model.generate_content(full_input_prompt)
         return response.text
-    else: raise ValueError(f"Ошибка: Неизвестный провайдер для модели '{model_name}'.")
+
+    # --- Вариант 3: Неизвестный провайдер ---
+    else:
+        raise ValueError(f"Ошибка: Неизвестный провайдер для модели '{model_name}'.")
 
 # --- Админка, чат и логика Битрикс24 ---
 def get_current_username(credentials: HTTPBasicCredentials = Depends(security)):
@@ -136,7 +116,6 @@ async def handle_chat(chat_request: ChatRequest, username: str = Depends(get_cur
         with open(PROMPT_FILE, "r") as f: system_prompt = f.read().strip()
         with open(CURRENT_MODEL_FILE, "r") as f: model_name = f.read().strip()
     except FileNotFoundError: return JSONResponse(status_code=500, content={"ai_response": "Ошибка: Файлы настроек не найдены."})
-    # ВАЖНО: Убираем лишнюю инструкцию, чтобы ИИ полностью руководствовался промптом
     full_input_prompt = f"{system_prompt}\n\nClient request:\n{chat_request.user_message}"
     try:
         ai_response_text = get_ai_response(model_name, full_input_prompt)
