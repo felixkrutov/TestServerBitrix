@@ -12,3 +12,4 @@ pypdf
 python-docx
 pandas
 openpyxl
+langchain-community
