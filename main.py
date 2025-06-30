@@ -249,6 +249,11 @@ async def read_admin_ui(request: Request, username: str = Depends(get_current_ad
     # Загрузка состояния RAG для отображения на странице
     use_rag_setting = load_rag_setting()
 
+    # Получение списка пользователей для вкладки "Управление пользователями"
+    conn = get_db_connection()
+    users_list = conn.execute("SELECT id, username FROM users").fetchall()
+    conn.close()
+    
     # Передача всех данных в шаблон
     return templates.TemplateResponse("index.html", {
         "request": request,
@@ -257,7 +262,8 @@ async def read_admin_ui(request: Request, username: str = Depends(get_current_ad
         "system_prompt": prompt,
         "logs": logs,
         "uploaded_files": uploaded_files,
-        "use_rag": use_rag_setting
+        "use_rag": use_rag_setting,
+        "users_list": [{"id": user["id"], "username": user["username"]} for user in users_list] # Передаем список пользователей
     })
 
 @app.get("/api/status")
@@ -301,11 +307,7 @@ async def save_settings(
     prompt: str = Form(...),
     use_rag: bool = Form(False)
 ):
-    global CURRENT_MODEL, SYSTEM_PROMPT, USE_RAG # SYSTEM_PROMPT больше не глобальная, но оставим для совместимости
-    
-    # CURRENT_MODEL = model # Эта переменная не используется глобально, но сохраним в файл
-    # SYSTEM_PROMPT = prompt # Эта переменная не используется глобально, но сохраним в файл
-    USE_RAG = use_rag
+    global USE_RAG
     
     with open(CURRENT_MODEL_FILE, "w") as f: f.write(model)
     with open(PROMPT_NIKOLAI_FILE, "w") as f: f.write(prompt) # Сохраняем в prompt.txt
@@ -437,10 +439,19 @@ class UserLogin(BaseModel):
     username: str
     password: str
 
-def create_access_token(data: dict):
-    # В реальном приложении здесь должен быть JWT токен или более сложная система сессий
-    # Для простоты, пока используем простой токен сессии
+def create_session_token(data: dict):
+    # Для простоты, пока используем простой токен сессии. В реальном приложении можно использовать JWT.
     return secrets.token_urlsafe(32)
+
+# Зависимость для проверки авторизации пользователя Мосса Ассистента
+def get_current_mossa_user(request: Request):
+    session_token = request.cookies.get("mossa_session")
+    if not session_token:
+        # Если куки нет, перенаправляем на страницу логина
+        raise HTTPException(status_code=302, detail="Не авторизован", headers={"Location": "/mossaassistant/login"})
+    # В реальном приложении здесь должна быть проверка токена на валидность и срок действия
+    # Для простоты, пока просто проверяем наличие куки
+    return session_token
 
 @app.post("/mossaassistant/login")
 async def login_for_access_token(response: Response, form_data: UserLogin):
@@ -452,18 +463,9 @@ async def login_for_access_token(response: Response, form_data: UserLogin):
             headers={"WWW-Authenticate": "Bearer"},
         )
     # Устанавливаем куку сессии
-    session_token = create_access_token({"sub": user["username"]})
+    session_token = create_session_token({"sub": user["username"]})
     response.set_cookie(key="mossa_session", value=session_token, httponly=True, max_age=3600*24) # Кука на 24 часа
     return RedirectResponse(url="/mossaassistant/chat", status_code=302)
-
-# Проверка сессии для Мосса Ассистента
-def get_current_mossa_user(request: Request):
-    session_token = request.cookies.get("mossa_session")
-    if not session_token:
-        raise HTTPException(status_code=302, detail="Не авторизован", headers={"Location": "/mossaassistant/login"})
-    # В реальном приложении здесь должна быть проверка токена на валидность и срок действия
-    # Для простоты, пока просто проверяем наличие
-    return session_token
 
 @app.get("/mossaassistant", response_class=RedirectResponse)
 async def redirect_to_mossaassistant_chat():
