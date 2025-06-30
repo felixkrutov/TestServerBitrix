@@ -61,7 +61,10 @@ MODELS_LIST_FILE = "models_list.txt"
 CURRENT_MODEL_FILE = "current_model.txt"
 PROMPT_NIKOLAI_FILE = "prompt.txt"
 PROMPT_MOSSAASSISTANT_FILE = "prompt_mossaassistant.txt"
-USE_RAG_FILE = "use_rag.txt"
+CURRENT_MODEL_MOSSA_FILE = "current_model_mossa.txt"
+# РАЗДЕЛЬНЫЕ ФАЙЛЫ ДЛЯ RAG
+USE_RAG_NIKOLAI_FILE = "use_rag_nikolai.txt"
+USE_RAG_MOSSA_FILE = "use_rag_mossa.txt"
 DOCS_DIR = "documents"
 DB_DIR = "chroma_db"
 USERS_DB_FILE = "users.db"
@@ -111,18 +114,16 @@ def load_and_process_document(file_path: str):
         print(f"WARNING: Неподдерживаемый формат файла: {file_path}")
 
 # --- Функции для загрузки/сохранения состояния RAG ---
-def load_rag_setting():
+def load_rag_setting(file_path: str):
     try:
-        with open(USE_RAG_FILE, "r") as f:
+        with open(file_path, "r") as f:
             return f.read().strip().lower() == "true"
     except FileNotFoundError:
-        return True
+        return True # По умолчанию включено
 
-def save_rag_setting(value: bool):
-    with open(USE_RAG_FILE, "w") as f:
+def save_rag_setting(file_path: str, value: bool):
+    with open(file_path, "w") as f:
         f.write(str(value).lower())
-
-USE_RAG = load_rag_setting()
 
 # --- Функции для работы с базой данных пользователей и чатов ---
 def get_db_connection():
@@ -183,12 +184,6 @@ def get_user(username: str):
     conn.close()
     return user
 
-def get_user_by_id(user_id: int):
-    conn = get_db_connection()
-    user = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
-    conn.close()
-    return user
-
 def create_user(username: str, password: str):
     hashed_password = get_password_hash(password)
     conn = get_db_connection()
@@ -207,13 +202,6 @@ def delete_user(user_id: int):
     conn.commit()
     conn.close()
 
-def update_user_password(user_id: int, new_password: str):
-    hashed_password = get_password_hash(new_password)
-    conn = get_db_connection()
-    conn.execute("UPDATE users SET hashed_password = ? WHERE id = ?", (hashed_password, user_id))
-    conn.commit()
-    conn.close()
-
 @app.on_event("startup")
 def on_startup():
     print("INFO: Сервер запущен. Инициализация базы данных...")
@@ -226,16 +214,15 @@ def get_current_admin_username(credentials: HTTPBasicCredentials = Depends(secur
         raise HTTPException(status_code=401, detail="Incorrect username or password", headers={"WWW-Authenticate": "Basic"})
     return credentials.username
 
-def get_ai_response(model_name: str, system_prompt_content: str, user_query: str, chat_history: list = None):
-    global USE_RAG
+def get_ai_response(model_name: str, system_prompt_content: str, user_query: str, use_rag_for_this_request: bool, chat_history: list = None):
     context = ""
-    if USE_RAG:
+    if use_rag_for_this_request:
         print("INFO: Поиск релевантных документов в базе знаний...")
         retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
         relevant_docs = retriever.get_relevant_documents(user_query)
         context = "\n\n---\n\n".join([doc.page_content for doc in relevant_docs])
     else:
-        print("INFO: Использование базы знаний отключено.")
+        print("INFO: Использование базы знаний для этого запроса отключено.")
 
     messages = []
     final_system_prompt = system_prompt_content
@@ -266,36 +253,50 @@ def get_ai_response(model_name: str, system_prompt_content: str, user_query: str
     else:
         raise ValueError(f"Ошибка: Неизвестный провайдер для модели '{model_name}'.")
 
-# --- Админ-панель "Николай" ---
+# --- Админ-панель ---
 @app.get("/", response_class=HTMLResponse)
 async def read_admin_ui(request: Request, username: str = Depends(get_current_admin_username)):
     default_models = ["o4-mini-2025-04-16", "gemini-2.5-pro"]
     try:
         with open(MODELS_LIST_FILE, "r") as f: models_list = [line.strip() for line in f]
     except FileNotFoundError: models_list = default_models
-    try:
-        with open(CURRENT_MODEL_FILE, "r") as f: current_model = f.read().strip()
-    except FileNotFoundError: current_model = models_list[0] if models_list else default_models[0]
-    try:
-        with open(PROMPT_NIKOLAI_FILE, "r") as f: prompt = f.read().strip()
-    except FileNotFoundError: prompt = "Промпт по умолчанию для Николая"
     
+    try:
+        with open(CURRENT_MODEL_FILE, "r") as f: current_model_nikolai = f.read().strip()
+    except FileNotFoundError: current_model_nikolai = models_list[0] if models_list else default_models[0]
+    try:
+        with open(PROMPT_NIKOLAI_FILE, "r") as f: prompt_nikolai = f.read().strip()
+    except FileNotFoundError: prompt_nikolai = "Промпт по умолчанию для Николая"
+    
+    try:
+        with open(CURRENT_MODEL_MOSSA_FILE, "r") as f: current_model_mossa = f.read().strip()
+    except FileNotFoundError: current_model_mossa = models_list[0] if models_list else default_models[0]
+    try:
+        with open(PROMPT_MOSSAASSISTANT_FILE, "r") as f: prompt_mossa = f.read().strip()
+    except FileNotFoundError: prompt_mossa = "Промпт по умолчанию для Мосса Ассистента"
+
     uploaded_files = [f for f in os.listdir(DOCS_DIR) if os.path.isfile(os.path.join(DOCS_DIR, f))]
     try: result = subprocess.run(["journalctl", "-u", "bitrix-gpt.service", "--since", "5 minutes ago", "--no-pager"], capture_output=True, text=True); logs = result.stdout
     except FileNotFoundError: logs = "Не удалось загрузить логи."
-    use_rag_setting = load_rag_setting()
+    
+    use_rag_nikolai = load_rag_setting(USE_RAG_NIKOLAI_FILE)
+    use_rag_mossa = load_rag_setting(USE_RAG_MOSSA_FILE)
+    
     conn = get_db_connection()
     users_list = conn.execute("SELECT id, username FROM users").fetchall()
     conn.close()
     
     return templates.TemplateResponse("index.html", {
         "request": request,
-        "current_model": current_model,
         "models": models_list,
-        "system_prompt": prompt,
+        "current_model_nikolai": current_model_nikolai,
+        "system_prompt_nikolai": prompt_nikolai,
+        "current_model_mossa": current_model_mossa,
+        "system_prompt_mossa": prompt_mossa,
         "logs": logs,
         "uploaded_files": uploaded_files,
-        "use_rag": use_rag_setting,
+        "use_rag_nikolai": use_rag_nikolai,
+        "use_rag_mossa": use_rag_mossa,
         "users_list": [{"id": user["id"], "username": user["username"]} for user in users_list]
     })
 
@@ -311,30 +312,21 @@ async def get_logs(username: str = Depends(get_current_admin_username)):
     except FileNotFoundError: logs = "Не удалось загрузить логи."
     return {"logs": logs}
 
-@app.get("/api/settings")
-async def get_settings(username: str = Depends(get_current_admin_username)):
-    default_models = ["o4-mini-2025-04-16", "gemini-2.5-pro"]
-    try:
-        with open(MODELS_LIST_FILE, "r") as f: models_list = [line.strip() for line in f]
-    except FileNotFoundError: models_list = default_models
-    try:
-        with open(CURRENT_MODEL_FILE, "r") as f: current_model = f.read().strip()
-    except FileNotFoundError: current_model = models_list[0] if models_list else default_models[0]
-    try:
-        with open(PROMPT_NIKOLAI_FILE, "r") as f: prompt = f.read().strip()
-    except FileNotFoundError: prompt = "Промпт по умолчанию для Николая"
-    
-    use_rag_setting = load_rag_setting()
-    return {"models_list": models_list, "current_model": current_model, "prompt": prompt, "use_rag": use_rag_setting}
-
-@app.post("/api/settings")
-async def save_settings(username: str = Depends(get_current_admin_username), model: str = Form(...), prompt: str = Form(...), use_rag: bool = Form(False)):
-    global USE_RAG
+@app.post("/api/settings/nikolai")
+async def save_nikolai_settings(username: str = Depends(get_current_admin_username), model: str = Form(...), prompt: str = Form(...), use_rag_nikolai: bool = Form(False)):
     with open(CURRENT_MODEL_FILE, "w") as f: f.write(model)
     with open(PROMPT_NIKOLAI_FILE, "w") as f: f.write(prompt)
-    save_rag_setting(use_rag)
+    save_rag_setting(USE_RAG_NIKOLAI_FILE, use_rag_nikolai)
     subprocess.run(["systemctl", "restart", "bitrix-gpt.service"])
-    return {"status": "ok"}
+    return {"status": "ok", "message": "Настройки для 'Николая' сохранены."}
+
+@app.post("/api/settings/mossa")
+async def save_mossa_settings(username: str = Depends(get_current_admin_username), model: str = Form(...), prompt: str = Form(...), use_rag_mossa: bool = Form(False)):
+    with open(CURRENT_MODEL_MOSSA_FILE, "w") as f: f.write(model)
+    with open(PROMPT_MOSSAASSISTANT_FILE, "w") as f: f.write(prompt)
+    save_rag_setting(USE_RAG_MOSSA_FILE, use_rag_mossa)
+    subprocess.run(["systemctl", "restart", "bitrix-gpt.service"])
+    return {"status": "ok", "message": "Настройки для 'Мосса Ассистента' сохранены."}
 
 @app.post("/api/chat")
 async def handle_chat(chat_request: ChatRequest, username: str = Depends(get_current_admin_username)):
@@ -343,8 +335,9 @@ async def handle_chat(chat_request: ChatRequest, username: str = Depends(get_cur
         with open(CURRENT_MODEL_FILE, "r") as f: model_name = f.read().strip()
     except FileNotFoundError: return JSONResponse(status_code=500, content={"ai_response": "Ошибка: Файлы настроек не найдены."})
     
+    use_rag_nikolai = load_rag_setting(USE_RAG_NIKOLAI_FILE)
     try:
-        ai_response_text = get_ai_response(model_name, system_prompt, chat_request.user_message)
+        ai_response_text = get_ai_response(model_name, system_prompt, chat_request.user_message, use_rag_for_this_request=use_rag_nikolai)
     except Exception as e:
         ai_response_text = f"Ошибка при обращении к ИИ ({model_name}): {str(e)}"
     return {"ai_response": ai_response_text}
@@ -372,13 +365,6 @@ async def delete_document(filename: str, username: str = Depends(get_current_adm
     else:
         raise HTTPException(status_code=404, detail="Файл не найден")
 
-@app.get("/api/users", response_class=JSONResponse)
-async def get_users(username: str = Depends(get_current_admin_username)):
-    conn = get_db_connection()
-    users = conn.execute("SELECT id, username FROM users").fetchall()
-    conn.close()
-    return {"users": [{"id": user["id"], "username": user["username"]} for user in users]}
-
 @app.post("/api/users", response_class=JSONResponse)
 async def add_user(user_data: UserCreate, username: str = Depends(get_current_admin_username)):
     if not user_data.username or not user_data.password:
@@ -387,13 +373,6 @@ async def add_user(user_data: UserCreate, username: str = Depends(get_current_ad
         return {"message": f"Пользователь '{user_data.username}' успешно создан."}
     else:
         raise HTTPException(status_code=400, detail=f"Пользователь '{user_data.username}' уже существует.")
-
-@app.put("/api/users/{user_id}", response_class=JSONResponse)
-async def update_password(user_id: int, user_data: UserUpdatePassword, username: str = Depends(get_current_admin_username)):
-    if not user_data.new_password:
-        raise HTTPException(status_code=400, detail="Новый пароль не может быть пустым.")
-    update_user_password(user_id, user_data.new_password)
-    return {"message": f"Пароль пользователя ID {user_id} успешно обновлен."}
 
 @app.delete("/api/users/{user_id}", response_class=JSONResponse)
 async def remove_user(user_id: int, username: str = Depends(get_current_admin_username)):
@@ -436,9 +415,10 @@ def process_lead_in_background(lead_id: str):
         update_b24_lead(lead_id, error_message)
         return
     
+    use_rag_nikolai = load_rag_setting(USE_RAG_NIKOLAI_FILE)
     print(f"BACKGROUND: Запрос к ИИ для лида {lead_id} сформирован. Отправка...")
     try:
-        ai_response_text = get_ai_response(model_name, system_prompt, task_text)
+        ai_response_text = get_ai_response(model_name, system_prompt, task_text, use_rag_for_this_request=use_rag_nikolai)
         print(f"BACKGROUND: Ответ от ИИ для лида {lead_id} получен.")
     except Exception as e:
         ai_response_text = f"Ошибка при обращении к ИИ ({model_name}): {str(e)}"
@@ -465,7 +445,6 @@ async def b24_hook(req: Request, background_tasks: BackgroundTasks):
     return {"status": "ok, task accepted"}
 
 # --- Мосса Ассистент ---
-
 async def get_current_mossa_user(request: Request):
     session_token = request.cookies.get("mossa_session")
     login_url = "/mossaassistant/login"
@@ -494,7 +473,6 @@ async def get_current_mossa_user(request: Request):
     
     return user
 
-# ИЗМЕНЕНО: Функция теперь не фоновая, а обычная и возвращает название
 def generate_chat_title(user_message: str) -> str:
     try:
         title_prompt = f"Создай очень короткое, лаконичное название (3-5 слов) для чата, который начинается с этого сообщения от пользователя: '{user_message}'. Ответь только названием, без кавычек и лишних слов."
@@ -572,7 +550,7 @@ async def get_chat_messages(chat_id: int, user: dict = Depends(get_current_mossa
     chat_owner = conn.execute("SELECT user_id FROM chats WHERE id = ?", (chat_id,)).fetchone()
     if not chat_owner or chat_owner["user_id"] != user["id"]:
         conn.close()
-        raise HTTPException(status_code=404, detail="Чат не найден или у вас нет к нему доступа")
+        raise HTTPException(status_code=404, detail="Чат не найден")
     
     messages = conn.execute(
         "SELECT role, content FROM messages WHERE chat_id = ? ORDER BY timestamp ASC",
@@ -588,10 +566,11 @@ async def mossaassistant_handle_chat(
 ):
     try:
         with open(PROMPT_MOSSAASSISTANT_FILE, "r") as f: system_prompt = f.read().strip()
-        with open(CURRENT_MODEL_FILE, "r") as f: model_name = f.read().strip()
+        with open(CURRENT_MODEL_MOSSA_FILE, "r") as f: model_name = f.read().strip()
     except FileNotFoundError:
         raise HTTPException(status_code=500, detail="Ошибка: Файлы настроек не найдены.")
 
+    use_rag_mossa = load_rag_setting(USE_RAG_MOSSA_FILE)
     conn = get_db_connection()
     current_chat_id = chat_request.chat_id
     is_new_chat = False
@@ -611,7 +590,7 @@ async def mossaassistant_handle_chat(
         chat_history = [{"role": row["role"], "content": row["content"]} for row in history_rows]
     
     try:
-        ai_response_text = get_ai_response(model_name, system_prompt, chat_request.user_message, chat_history=chat_history)
+        ai_response_text = get_ai_response(model_name, system_prompt, chat_request.user_message, use_rag_for_this_request=use_rag_mossa, chat_history=chat_history)
         
         if not current_chat_id:
             is_new_chat = True
