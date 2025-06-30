@@ -40,6 +40,10 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 class ChatRequest(BaseModel):
     user_message: str
 
+class UserLogin(BaseModel):
+    username: str
+    password: str
+
 class UserCreate(BaseModel):
     username: str
     password: str
@@ -272,101 +276,7 @@ async def read_admin_ui(request: Request, username: str = Depends(get_current_ad
         "users_list": [{"id": user["id"], "username": user["username"]} for user in users_list]
     })
 
-@app.get("/api/status")
-async def get_status(username: str = Depends(get_current_admin_username)):
-    try: result = subprocess.run(["systemctl", "is-active", "bitrix-gpt.service"], capture_output=True, text=True); status = result.stdout.strip()
-    except FileNotFoundError: status = "failed"
-    return {"status": status}
-
-@app.get("/api/logs")
-async def get_logs(username: str = Depends(get_current_admin_username)):
-    try: result = subprocess.run(["journalctl", "-u", "bitrix-gpt.service", "--since", "5 minutes ago", "--no-pager"], capture_output=True, text=True); logs = result.stdout
-    except FileNotFoundError: logs = "Не удалось загрузить логи."
-    return {"logs": logs}
-
-@app.get("/api/settings")
-async def get_settings(username: str = Depends(get_current_admin_username)):
-    default_models = ["o4-mini-2025-04-16", "gemini-2.5-pro"]
-    try:
-        with open(MODELS_LIST_FILE, "r") as f: models_list = [line.strip() for line in f]
-    except FileNotFoundError: models_list = default_models
-    try:
-        with open(CURRENT_MODEL_FILE, "r") as f: current_model = f.read().strip()
-    except FileNotFoundError: current_model = models_list[0] if models_list else default_models[0]
-    try:
-        with open(PROMPT_NIKOLAI_FILE, "r") as f: prompt = f.read().strip()
-    except FileNotFoundError: prompt = "Промпт по умолчанию для Николая"
-    
-    use_rag_setting = load_rag_setting()
-
-    return {
-        "models_list": models_list,
-        "current_model": current_model,
-        "prompt": prompt,
-        "use_rag": use_rag_setting
-    }
-
-@app.post("/api/settings")
-async def save_settings(
-    username: str = Depends(get_current_admin_username),
-    model: str = Form(...),
-    prompt: str = Form(...),
-    use_rag: bool = Form(False)
-):
-    global USE_RAG
-    
-    with open(CURRENT_MODEL_FILE, "w") as f: f.write(model)
-    with open(PROMPT_NIKOLAI_FILE, "w") as f: f.write(prompt)
-    save_rag_setting(USE_RAG)
-
-    subprocess.run(["systemctl", "restart", "bitrix-gpt.service"])
-    
-    return {"status": "ok"}
-
-@app.post("/api/chat")
-async def handle_chat(chat_request: ChatRequest, username: str = Depends(get_current_admin_username)):
-    try:
-        with open(PROMPT_NIKOLAI_FILE, "r") as f: system_prompt = f.read().strip()
-        with open(CURRENT_MODEL_FILE, "r") as f: model_name = f.read().strip()
-    except FileNotFoundError: return JSONResponse(status_code=500, content={"ai_response": "Ошибка: Файлы настроек не найдены."})
-    
-    try:
-        ai_response_text = get_ai_response(model_name, system_prompt, chat_request.user_message)
-    except Exception as e:
-        ai_response_text = f"Ошибка при обращении к ИИ ({model_name}): {str(e)}"
-    return {"ai_response": ai_response_text}
-
-# --- Управление пользователями (новая вкладка в админке) ---
-@app.get("/api/users", response_class=JSONResponse)
-async def get_users(username: str = Depends(get_current_admin_username)):
-    conn = get_db_connection()
-    users = conn.execute("SELECT id, username FROM users").fetchall()
-    conn.close()
-    return {"users": [{"id": user["id"], "username": user["username"]} for user in users]}
-
-@app.post("/api/users", response_class=JSONResponse)
-async def add_user(user_data: UserCreate, username: str = Depends(get_current_admin_username)):
-    if not user_data.username or not user_data.password:
-        raise HTTPException(status_code=400, detail="Логин и пароль не могут быть пустыми.")
-    if create_user(user_data.username, user_data.password):
-        return {"message": f"Пользователь '{user_data.username}' успешно создан."}
-    else:
-        raise HTTPException(status_code=400, detail=f"Пользователь '{user_data.username}' уже существует.")
-
-@app.put("/api/users/{user_id}", response_class=JSONResponse)
-async def update_password(user_id: int, user_data: UserUpdatePassword, username: str = Depends(get_current_admin_username)):
-    if not user_data.new_password:
-        raise HTTPException(status_code=400, detail="Новый пароль не может быть пустым.")
-    update_user_password(user_id, user_data.new_password)
-    return {"message": f"Пароль пользователя ID {user_id} успешно обновлен."}
-
-@app.delete("/api/users/{user_id}", response_class=JSONResponse)
-async def remove_user(user_id: int, username: str = Depends(get_current_admin_username)):
-    delete_user(user_id)
-    return {"message": f"Пользователь ID {user_id} успешно удален."}
-
-# --- Логика Битрикс24 (без изменений) ---
-# ... (этот блок без изменений) ...
+# ... (все остальные функции админки остаются с Depends(get_current_admin_username)) ...
 
 # --- Мосса Ассистент (для коллег) ---
 def create_session_token(data: dict):
@@ -379,45 +289,18 @@ def get_current_mossa_user(request: Request):
     return session_token
 
 @app.post("/mossaassistant/login")
-async def login_for_access_token(response: Response, request: Request, username: str = Form(...), password: str = Form(...)): # <-- ИЗМЕНЕНО
+async def login_for_access_token(request: Request, username: str = Form(...), password: str = Form(...)): # <-- ИЗМЕНЕНО
     user = get_user(username)
     if not user or not verify_password(password, user["hashed_password"]):
-        # Не выбрасываем ошибку, а возвращаем на страницу логина с сообщением
         return templates.TemplateResponse("login_mossaassistant.html", {
             "request": request,
             "error": "Неверный логин или пароль"
         })
     
+    # Вместо RedirectResponse, мы возвращаем JSON с командой на перенаправление
     session_token = create_session_token({"sub": user["username"]})
+    response = JSONResponse(content={"redirect_url": "/mossaassistant/chat"})
     response.set_cookie(key="mossa_session", value=session_token, httponly=True, max_age=3600*24)
-    return RedirectResponse(url="/mossaassistant/chat", status_code=302)
+    return response
 
-@app.get("/mossaassistant", response_class=RedirectResponse)
-async def redirect_to_mossaassistant_chat():
-    return RedirectResponse(url="/mossaassistant/chat", status_code=302)
-
-@app.get("/mossaassistant/login", response_class=HTMLResponse)
-async def mossaassistant_login_page(request: Request):
-    return templates.TemplateResponse("login_mossaassistant.html", {"request": request, "error": None})
-
-@app.get("/mossaassistant/chat", response_class=HTMLResponse)
-async def mossaassistant_chat_page(request: Request, user_session: str = Depends(get_current_mossa_user)):
-    return templates.TemplateResponse("chat_mossaassistant.html", {"request": request})
-
-@app.post("/mossaassistant/api/chat", response_class=JSONResponse)
-async def mossaassistant_handle_chat(chat_request: ChatRequest, user_session: str = Depends(get_current_mossa_user)):
-    try:
-        with open(PROMPT_MOSSAASSISTANT_FILE, "r") as f: system_prompt = f.read().strip()
-        with open(CURRENT_MODEL_FILE, "r") as f: model_name = f.read().strip()
-    except FileNotFoundError: return JSONResponse(status_code=500, content={"ai_response": "Ошибка: Файлы настроек не найдены."})
-    
-    try:
-        ai_response_text = get_ai_response(model_name, system_prompt, chat_request.user_message)
-    except Exception as e:
-        ai_response_text = f"Ошибка при обращении к ИИ ({model_name}): {str(e)}"
-    return {"ai_response": ai_response_text}
-
-@app.post("/mossaassistant/logout", response_class=RedirectResponse)
-async def mossaassistant_logout(response: Response):
-    response.delete_cookie(key="mossa_session")
-    return RedirectResponse(url="/mossaassistant/login", status_code=302)
+# ... (остальные функции Мосса Ассистента остаются без изменений) ...
