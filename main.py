@@ -494,7 +494,8 @@ async def get_current_mossa_user(request: Request):
     
     return user
 
-def generate_chat_title(chat_id: int, user_message: str):
+# ИЗМЕНЕНО: Функция теперь не фоновая, а обычная и возвращает название
+def generate_chat_title(user_message: str) -> str:
     try:
         title_prompt = f"Создай очень короткое, лаконичное название (3-5 слов) для чата, который начинается с этого сообщения от пользователя: '{user_message}'. Ответь только названием, без кавычек и лишних слов."
         model_name = "o4-mini-2025-04-16" 
@@ -503,14 +504,11 @@ def generate_chat_title(chat_id: int, user_message: str):
             messages=[{"role": "system", "content": title_prompt}]
         )
         new_title = response.choices[0].message.content.strip().strip('"')
-
-        conn = get_db_connection()
-        conn.execute("UPDATE chats SET title = ? WHERE id = ?", (new_title, chat_id))
-        conn.commit()
-        conn.close()
-        print(f"INFO: Сгенерировано название для чата {chat_id}: '{new_title}'")
+        print(f"INFO: Сгенерировано название для чата: '{new_title}'")
+        return new_title
     except Exception as e:
-        print(f"ERROR: Не удалось сгенерировать название для чата {chat_id}: {e}")
+        print(f"ERROR: Не удалось сгенерировать название для чата: {e}")
+        return "Новый чат"
 
 @app.post("/mossaassistant/login")
 async def login_for_access_token(request: Request, username: str = Form(...), password: str = Form(...)):
@@ -586,7 +584,6 @@ async def get_chat_messages(chat_id: int, user: dict = Depends(get_current_mossa
 @app.post("/mossaassistant/api/chat", response_class=JSONResponse)
 async def mossaassistant_handle_chat(
     chat_request: MossaChatRequest,
-    background_tasks: BackgroundTasks,
     user: dict = Depends(get_current_mossa_user)
 ):
     try:
@@ -598,13 +595,14 @@ async def mossaassistant_handle_chat(
     conn = get_db_connection()
     current_chat_id = chat_request.chat_id
     is_new_chat = False
+    new_title = None
     chat_history = []
 
     if current_chat_id:
         chat_owner = conn.execute("SELECT user_id FROM chats WHERE id = ?", (current_chat_id,)).fetchone()
         if not chat_owner or chat_owner["user_id"] != user["id"]:
             conn.close()
-            raise HTTPException(status_code=404, detail="Чат не найден или у вас нет к нему доступа")
+            raise HTTPException(status_code=404, detail="Чат не найден")
         
         history_rows = conn.execute(
             "SELECT role, content FROM messages WHERE chat_id = ? ORDER BY timestamp ASC",
@@ -617,14 +615,14 @@ async def mossaassistant_handle_chat(
         
         if not current_chat_id:
             is_new_chat = True
+            new_title = generate_chat_title(chat_request.user_message)
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT INTO chats (user_id, title) VALUES (?, ?)",
-                (user["id"], "Новый чат...")
+                (user["id"], new_title)
             )
             conn.commit()
             current_chat_id = cursor.lastrowid
-            background_tasks.add_task(generate_chat_title, current_chat_id, chat_request.user_message)
 
         conn.execute(
             "INSERT INTO messages (chat_id, role, content) VALUES (?, ?, ?)",
@@ -643,7 +641,7 @@ async def mossaassistant_handle_chat(
     finally:
         conn.close()
 
-    return {"ai_response": ai_response_text, "chat_id": current_chat_id, "is_new_chat": is_new_chat}
+    return {"ai_response": ai_response_text, "chat_id": current_chat_id, "is_new_chat": is_new_chat, "new_title": new_title}
 
 @app.put("/mossaassistant/api/chats/{chat_id}", response_class=JSONResponse)
 async def rename_chat(
@@ -655,7 +653,7 @@ async def rename_chat(
     chat_owner = conn.execute("SELECT user_id FROM chats WHERE id = ?", (chat_id,)).fetchone()
     if not chat_owner or chat_owner["user_id"] != user["id"]:
         conn.close()
-        raise HTTPException(status_code=404, detail="Чат не найден или у вас нет к нему доступа")
+        raise HTTPException(status_code=404, detail="Чат не найден")
     
     conn.execute("UPDATE chats SET title = ? WHERE id = ?", (rename_request.new_title, chat_id))
     conn.commit()
@@ -668,7 +666,7 @@ async def delete_chat(chat_id: int, user: dict = Depends(get_current_mossa_user)
     chat_owner = conn.execute("SELECT user_id FROM chats WHERE id = ?", (chat_id,)).fetchone()
     if not chat_owner or chat_owner["user_id"] != user["id"]:
         conn.close()
-        raise HTTPException(status_code=404, detail="Чат не найден или у вас нет к нему доступа")
+        raise HTTPException(status_code=404, detail="Чат не найден")
     
     conn.execute("DELETE FROM chats WHERE id = ?", (chat_id,))
     conn.commit()
