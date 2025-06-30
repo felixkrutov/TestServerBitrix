@@ -62,9 +62,10 @@ CURRENT_MODEL_FILE = "current_model.txt"
 PROMPT_NIKOLAI_FILE = "prompt.txt"
 PROMPT_MOSSAASSISTANT_FILE = "prompt_mossaassistant.txt"
 CURRENT_MODEL_MOSSA_FILE = "current_model_mossa.txt"
-# РАЗДЕЛЬНЫЕ ФАЙЛЫ ДЛЯ RAG
 USE_RAG_NIKOLAI_FILE = "use_rag_nikolai.txt"
 USE_RAG_MOSSA_FILE = "use_rag_mossa.txt"
+# НОВЫЙ ФАЙЛ ДЛЯ ЖУРНАЛА ИЗМЕНЕНИЙ
+CHANGELOG_FILE = "changelog.txt"
 DOCS_DIR = "documents"
 DB_DIR = "chroma_db"
 USERS_DB_FILE = "users.db"
@@ -119,7 +120,7 @@ def load_rag_setting(file_path: str):
         with open(file_path, "r") as f:
             return f.read().strip().lower() == "true"
     except FileNotFoundError:
-        return True # По умолчанию включено
+        return True
 
 def save_rag_setting(file_path: str, value: bool):
     with open(file_path, "w") as f:
@@ -282,6 +283,10 @@ async def read_admin_ui(request: Request, username: str = Depends(get_current_ad
     use_rag_nikolai = load_rag_setting(USE_RAG_NIKOLAI_FILE)
     use_rag_mossa = load_rag_setting(USE_RAG_MOSSA_FILE)
     
+    try:
+        with open(CHANGELOG_FILE, "r", encoding="utf-8") as f: changelog_content = f.read()
+    except FileNotFoundError: changelog_content = ""
+
     conn = get_db_connection()
     users_list = conn.execute("SELECT id, username FROM users").fetchall()
     conn.close()
@@ -297,6 +302,7 @@ async def read_admin_ui(request: Request, username: str = Depends(get_current_ad
         "uploaded_files": uploaded_files,
         "use_rag_nikolai": use_rag_nikolai,
         "use_rag_mossa": use_rag_mossa,
+        "changelog_content": changelog_content,
         "users_list": [{"id": user["id"], "username": user["username"]} for user in users_list]
     })
 
@@ -327,6 +333,15 @@ async def save_mossa_settings(username: str = Depends(get_current_admin_username
     save_rag_setting(USE_RAG_MOSSA_FILE, use_rag_mossa)
     subprocess.run(["systemctl", "restart", "bitrix-gpt.service"])
     return {"status": "ok", "message": "Настройки для 'Мосса Ассистента' сохранены."}
+
+@app.post("/api/changelog")
+async def save_changelog(username: str = Depends(get_current_admin_username), content: str = Form(...)):
+    try:
+        with open(CHANGELOG_FILE, "w", encoding="utf-8") as f:
+            f.write(content)
+        return {"status": "ok", "message": "Журнал изменений сохранен."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка сохранения: {e}")
 
 @app.post("/api/chat")
 async def handle_chat(chat_request: ChatRequest, username: str = Depends(get_current_admin_username)):
