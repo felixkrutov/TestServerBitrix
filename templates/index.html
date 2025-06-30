@@ -9,45 +9,39 @@
     <style>
         body { background-color: #212529; color: #fff; }
         .container-fluid { max-width: 1600px; }
-        h1, h2, h3, h4, h5, h6, p, label, .card-header, .nav-link { color: #fff !important; } 
+        h1, h2, h3, h4, h5, h6, p, label, .card-header, .nav-link, #loading-indicator span { color: #fff !important; } 
         .card { background-color: #343a40; border-color: #495057; height: 100%; }
         .card-header { background-color: #495057; border-bottom: 1px solid #495057; }
-        .row .col-lg-6 .card-header {
-            padding-top: 1rem;
-            padding-bottom: 1rem;
-        }
+        .row .col-lg-6 .card-header { padding-top: 1rem; padding-bottom: 1rem; }
         .form-control, .form-select { background-color: #495057; color: #fff; border-color: #6c757d; }
         .form-control::placeholder { color: #ccc; }
         .form-control:focus, .form-select:focus { background-color: #495057; color: #fff; border-color: #86b7fe; box-shadow: none; }
         .status-dot { height: 25px; width: 25px; border-radius: 50%; display: inline-block; vertical-align: middle; }
         .status-ok { background-color: #198754; }
         .status-fail { background-color: #dc3545; }
-        #logs { background-color: #1a1a1a; color: #f8f9fa; font-family: monospace; white-space: pre-wrap; height: 400px; overflow-y: scroll; border: 1px solid #495057; }
+        #logs, #changelog-textarea { background-color: #1a1a1a; color: #f8f9fa; font-family: monospace; white-space: pre-wrap; height: 400px; overflow-y: scroll; border: 1px solid #495057; }
         .nav-tabs { border-bottom: none; }
         .nav-tabs .nav-link { border-color: #495057; }
         .nav-tabs .nav-link.active { background-color: #495057; border-color: #495057; }
-        /* ИЗМЕНЕНИЕ: Добавлена разделительная полоска */
-        .tab-content {
-            border-top: 1px solid #495057;
-        }
+        .tab-content { border-top: 1px solid #495057; }
         .tab-content > .tab-pane .card-body { min-height: 550px; }
         .item-list-item { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; border-bottom: 1px solid #495057; }
-        .item-list-item span {
-            color: #f8f9fa;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            margin-right: 1rem;
-        }
+        .item-list-item span { color: #f8f9fa; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-right: 1rem; }
         .upload-area { display: flex; gap: 1rem; align-items: center; padding: 15px; border: 1px solid #6c757d; border-radius: 0.25rem; }
         .file-name-display { background-color: #495057; padding: 0.375rem 0.75rem; border-radius: 0.25rem; border: 1px solid #6c757d; flex-grow: 1; text-align: left; color: #ccc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        #chat-history { background-color: #2c3034; height: 400px; overflow-y: scroll; border: 1px solid #495057; padding: 10px; margin-bottom: 1rem; }
-        .message-block { display: flex; flex-direction: column; margin-bottom: 0.5rem; max-width: 80%; }
+        
+        /* ИЗМЕНЕНИЕ: Новые стили для тестового чата */
+        #chat-history { background-color: #2c3034; height: 400px; overflow-y: auto; border: 1px solid #495057; padding: 10px; margin-bottom: 1rem; display: flex; flex-direction: column; }
+        .message-block { display: flex; flex-direction: column; margin-bottom: 1rem; max-width: 80%; }
         .message-content { padding: 0.5rem 1rem; border-radius: 0.5rem; word-wrap: break-word; }
+        .message-time { font-size: 0.75rem; color: #adb5bd; margin-top: 4px; }
         .user-message { align-self: flex-end; }
-        .user-message .message-content { background-color: #0d6efd; }
+        .user-message .message-content { background-color: #0d6efd; text-align: left; }
+        .user-message .message-time { text-align: right; }
         .ai-message { align-self: flex-start; }
-        .ai-message .message-content { background-color: #495057; white-space: pre-wrap; }
+        .ai-message .message-content { background-color: #495057; text-align: left; white-space: pre-wrap; }
+        .ai-message .message-time { text-align: left; }
+        .chat-pane-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
     </style>
 </head>
 <body>
@@ -60,6 +54,19 @@
                 <p>Статус сервиса: <span id="status-indicator" class="status-dot"></span> <span id="status-text">Загрузка...</span></p>
                 <button class="btn btn-primary mb-2" onclick="fetchLogs()">Обновить логи</button>
                 <div id="logs" class="p-2 rounded">{{ logs }}</div>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header">Журнал изменений</div>
+            <div class="card-body">
+                <form id="saveChangelogForm">
+                    <div class="mb-3">
+                        <textarea id="changelog-textarea" class="form-control">{{ changelog_content }}</textarea>
+                    </div>
+                    <button type="submit" class="btn btn-success">Сохранить журнал</button>
+                    <div id="changelogSaveStatus" class="mt-2 d-inline-block"></div>
+                </form>
             </div>
         </div>
 
@@ -110,6 +117,10 @@
                         </ul>
                         <div class="tab-content">
                             <div class="tab-pane fade show active p-3" id="nikolai-chat-pane">
+                                <div class="chat-pane-header">
+                                    <h5>Тестовый чат для отладки</h5>
+                                    <button class="btn btn-sm btn-outline-light" id="clear-chat-btn"><i class="bi bi-arrow-clockwise"></i> Очистить чат</button>
+                                </div>
                                 <div id="chat-history"></div>
                                 <div class="input-group">
                                     <textarea class="form-control" id="user-input" placeholder="Тестовый запрос для Николая..." rows="3"></textarea>
@@ -276,8 +287,32 @@
         } catch (error) { alert(error.message); }
     }
 
+    // --- Логика для Журнала Изменений ---
+    document.getElementById('saveChangelogForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const content = document.getElementById('changelog-textarea').value;
+        const formData = new FormData();
+        formData.append('content', content);
+        
+        const statusEl = document.getElementById('changelogSaveStatus');
+        statusEl.innerHTML = '<span class="text-info">Сохранение...</span>';
+        
+        try {
+            const response = await fetch('/api/changelog', { method: 'POST', body: formData });
+            const result = await response.json();
+            if (response.ok) {
+                statusEl.innerHTML = `<span class="text-success">${result.message}</span>`;
+            } else {
+                throw new Error(result.detail || 'Ошибка сохранения');
+            }
+        } catch (error) {
+            statusEl.innerHTML = `<span class="text-danger">${error.message}</span>`;
+        }
+        setTimeout(() => { statusEl.innerHTML = ''; }, 3000);
+    });
+
     // --- Логика для Николая (Битрикс) ---
-    const nikolaiTestChatHistory = []; // ИЗМЕНЕНИЕ: Память для тестового чата
+    const nikolaiTestChatHistory = [];
 
     document.getElementById('nikolaiSettingsForm').addEventListener('submit', async function(e) {
         e.preventDefault();
@@ -291,44 +326,48 @@
         setTimeout(() => { statusEl.innerHTML = ''; }, 5000);
     });
 
+    const renderNikolaiChat = () => {
+        const chatHistoryEl = document.getElementById('chat-history');
+        chatHistoryEl.innerHTML = '';
+        nikolaiTestChatHistory.forEach(msg => {
+            const time = new Date(msg.time).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+            const msgBlock = document.createElement('div');
+            msgBlock.className = `message-block ${msg.role}-message`;
+            msgBlock.innerHTML = `
+                <div class="message-content">${msg.content}</div>
+                <div class="message-time">${time}</div>
+            `;
+            chatHistoryEl.appendChild(msgBlock);
+        });
+        chatHistoryEl.scrollTop = chatHistoryEl.scrollHeight;
+    };
+
     document.getElementById('send-btn').addEventListener('click', async () => {
         const userInput = document.getElementById('user-input');
         const message = userInput.value.trim();
         if (!message) return;
         
-        nikolaiTestChatHistory.push({ role: 'user', content: message });
+        nikolaiTestChatHistory.push({ role: 'user', content: message, time: new Date() });
         userInput.value = '';
-        
-        // ИЗМЕНЕНИЕ: Перерисовываем чат из памяти
-        const chatHistoryEl = document.getElementById('chat-history');
-        chatHistoryEl.innerHTML = '';
-        nikolaiTestChatHistory.forEach(msg => {
-            const msgBlock = document.createElement('div');
-            msgBlock.className = `message-block ${msg.role}-message`;
-            msgBlock.innerHTML = `<div class="message-content">${msg.content}</div>`;
-            chatHistoryEl.appendChild(msgBlock);
-        });
+        renderNikolaiChat();
         
         document.getElementById('loading-indicator').style.display = 'block';
-        chatHistoryEl.scrollTop = chatHistoryEl.scrollHeight;
-
+        
         try {
             const response = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_message: message }) });
             const data = await response.json();
-            
-            nikolaiTestChatHistory.push({ role: 'ai', content: data.ai_response });
-            
-            const aiMsgBlock = document.createElement('div');
-            aiMsgBlock.className = 'message-block ai-message';
-            aiMsgBlock.innerHTML = `<div class="message-content">${data.ai_response}</div>`;
-            chatHistoryEl.appendChild(aiMsgBlock);
-
+            nikolaiTestChatHistory.push({ role: 'ai', content: data.ai_response, time: new Date() });
+            renderNikolaiChat();
         } catch (error) {
             alert('Ошибка чата: ' + error);
         } finally {
             document.getElementById('loading-indicator').style.display = 'none';
-            chatHistoryEl.scrollTop = chatHistoryEl.scrollHeight;
         }
+    });
+
+    document.getElementById('clear-chat-btn').addEventListener('click', () => {
+        nikolaiTestChatHistory.length = 0;
+        renderNikolaiChat();
     });
 
     // --- Логика для Мосса Ассистента ---
