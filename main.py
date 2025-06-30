@@ -4,9 +4,9 @@ import shutil
 import requests
 import subprocess
 import secrets
-import sqlite3 # <-- НОВЫЙ ИМПОРТ для работы с базой данных SQLite
-from datetime import datetime # <-- НОВЫЙ ИМПОРТ для времени в чате
-from passlib.context import CryptContext # <-- НОВЫЙ ИМПОРТ для хэширования паролей
+import sqlite3
+from datetime import datetime
+from passlib.context import CryptContext
 
 from fastapi import FastAPI, Request, HTTPException, Depends, Form, BackgroundTasks, UploadFile, File, Response
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -34,17 +34,17 @@ from langchain_openai import OpenAIEmbeddings
 app = FastAPI()
 security = HTTPBasic()
 templates = Jinja2Templates(directory="templates")
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto") # Для хэширования паролей
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # --- Пути к файлам и папкам ---
 MODELS_LIST_FILE = "models_list.txt"
 CURRENT_MODEL_FILE = "current_model.txt"
-PROMPT_NIKOLAI_FILE = "prompt.txt" # Твой основной промпт
-PROMPT_MOSSAASSISTANT_FILE = "prompt_mossaassistant.txt" # Промпт для коллег
+PROMPT_NIKOLAI_FILE = "prompt.txt"
+PROMPT_MOSSAASSISTANT_FILE = "prompt_mossaassistant.txt"
 USE_RAG_FILE = "use_rag.txt"
 DOCS_DIR = "documents"
 DB_DIR = "chroma_db"
-USERS_DB_FILE = "users.db" # <-- Файл базы данных пользователей
+USERS_DB_FILE = "users.db"
 
 # --- Получение всех ключей из переменных окружения ---
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -174,6 +174,7 @@ def on_startup():
     create_users_table() # Создаем таблицу пользователей, если ее нет
 
 # --- Аутентификация для админ-панели "Николай" ---
+# Эту функцию мы пока оставим, но не будем использовать в @Depends для отладки
 def get_current_admin_username(credentials: HTTPBasicCredentials = Depends(security)):
     correct_username = secrets.compare_digest(credentials.username, ADMIN_USERNAME)
     correct_password = secrets.compare_digest(credentials.password, ADMIN_PASSWORD)
@@ -187,7 +188,7 @@ def get_current_admin_username(credentials: HTTPBasicCredentials = Depends(secur
 
 # --- Универсальная функция для вызова ИИ (теперь с RAG) ---
 def get_ai_response(model_name: str, system_prompt_content: str, user_query: str):
-    global USE_RAG # Доступ к глобальной переменной
+    global USE_RAG
 
     context = ""
     if USE_RAG:
@@ -204,7 +205,6 @@ def get_ai_response(model_name: str, system_prompt_content: str, user_query: str
     else:
         print("INFO: Использование базы знаний отключено.")
 
-    # Формирование промпта в зависимости от наличия контекста
     if context:
         final_prompt = f"CONTEXT:\n{context}\n---\nPROMPT:\n{system_prompt_content}\n\nClient request:\n{user_query}\n\nИспользуя предоставленный CONTEXT, ответь на PROMPT. Если в контексте нет ответа, сообщи, что информация не найдена в базе знаний."
     else:
@@ -225,9 +225,9 @@ def get_ai_response(model_name: str, system_prompt_content: str, user_query: str
         raise ValueError(f"Ошибка: Неизвестный провайдер для модели '{model_name}'.")
 
 # --- Админ-панель "Николай" (http://your_ip/) ---
+# УБРАЛИ Depends(get_current_admin_username) для отладки
 @app.get("/", response_class=HTMLResponse)
-async def read_admin_ui(request: Request, username: str = Depends(get_current_admin_username)):
-    # Загрузка текущих настроек для отображения
+async def read_admin_ui(request: Request): # <-- ИЗМЕНЕНО
     default_models = ["o4-mini-2025-04-16", "gemini-2.5-pro"]
     try:
         with open(MODELS_LIST_FILE, "r") as f: models_list = [line.strip() for line in f]
@@ -239,22 +239,17 @@ async def read_admin_ui(request: Request, username: str = Depends(get_current_ad
         with open(PROMPT_NIKOLAI_FILE, "r") as f: prompt = f.read().strip()
     except FileNotFoundError: prompt = "Промпт по умолчанию для Николая"
     
-    # Получение списка загруженных файлов
     uploaded_files = [f for f in os.listdir(DOCS_DIR) if os.path.isfile(os.path.join(DOCS_DIR, f))]
 
-    # Получение логов (последние 5 минут)
     try: result = subprocess.run(["journalctl", "-u", "bitrix-gpt.service", "--since", "5 minutes ago", "--no-pager"], capture_output=True, text=True); logs = result.stdout
     except FileNotFoundError: logs = "Не удалось загрузить логи."
 
-    # Загрузка состояния RAG для отображения на странице
     use_rag_setting = load_rag_setting()
 
-    # Получение списка пользователей для вкладки "Управление пользователями"
     conn = get_db_connection()
     users_list = conn.execute("SELECT id, username FROM users").fetchall()
     conn.close()
     
-    # Передача всех данных в шаблон
     return templates.TemplateResponse("index.html", {
         "request": request,
         "current_model": current_model,
@@ -263,23 +258,26 @@ async def read_admin_ui(request: Request, username: str = Depends(get_current_ad
         "logs": logs,
         "uploaded_files": uploaded_files,
         "use_rag": use_rag_setting,
-        "users_list": [{"id": user["id"], "username": user["username"]} for user in users_list] # Передаем список пользователей
+        "users_list": [{"id": user["id"], "username": user["username"]} for user in users_list]
     })
 
+# УБРАЛИ Depends(get_current_admin_username) для отладки
 @app.get("/api/status")
-async def get_status(username: str = Depends(get_current_admin_username)):
+async def get_status(): # <-- ИЗМЕНЕНО
     try: result = subprocess.run(["systemctl", "is-active", "bitrix-gpt.service"], capture_output=True, text=True); status = result.stdout.strip()
     except FileNotFoundError: status = "failed"
     return {"status": status}
 
+# УБРАЛИ Depends(get_current_admin_username) для отладки
 @app.get("/api/logs")
-async def get_logs(username: str = Depends(get_current_admin_username)):
+async def get_logs(): # <-- ИЗМЕНЕНО
     try: result = subprocess.run(["journalctl", "-u", "bitrix-gpt.service", "--since", "5 minutes ago", "--no-pager"], capture_output=True, text=True); logs = result.stdout
     except FileNotFoundError: logs = "Не удалось загрузить логи."
     return {"logs": logs}
 
+# УБРАЛИ Depends(get_current_admin_username) для отладки
 @app.get("/api/settings")
-async def get_settings(username: str = Depends(get_current_admin_username)):
+async def get_settings(): # <-- ИЗМЕНЕНО
     default_models = ["o4-mini-2025-04-16", "gemini-2.5-pro"]
     try:
         with open(MODELS_LIST_FILE, "r") as f: models_list = [line.strip() for line in f]
@@ -300,29 +298,28 @@ async def get_settings(username: str = Depends(get_current_admin_username)):
         "use_rag": use_rag_setting
     }
 
+# УБРАЛИ Depends(get_current_admin_username) для отладки
 @app.post("/api/settings")
 async def save_settings(
-    username: str = Depends(get_current_admin_username),
     model: str = Form(...),
     prompt: str = Form(...),
     use_rag: bool = Form(False)
-):
+): # <-- ИЗМЕНЕНО
     global USE_RAG
     
     with open(CURRENT_MODEL_FILE, "w") as f: f.write(model)
-    with open(PROMPT_NIKOLAI_FILE, "w") as f: f.write(prompt) # Сохраняем в prompt.txt
+    with open(PROMPT_NIKOLAI_FILE, "w") as f: f.write(prompt)
     save_rag_setting(USE_RAG)
 
     subprocess.run(["systemctl", "restart", "bitrix-gpt.service"])
     
     return {"status": "ok"}
 
-class ChatRequest(BaseModel): user_message: str
-
+# УБРАЛИ Depends(get_current_admin_username) для отладки
 @app.post("/api/chat")
-async def handle_chat(chat_request: ChatRequest, username: str = Depends(get_current_admin_username)):
+async def handle_chat(chat_request: ChatRequest): # <-- ИЗМЕНЕНО
     try:
-        with open(PROMPT_NIKOLAI_FILE, "r") as f: system_prompt = f.read().strip() # Читаем из prompt.txt
+        with open(PROMPT_NIKOLAI_FILE, "r") as f: system_prompt = f.read().strip()
         with open(CURRENT_MODEL_FILE, "r") as f: model_name = f.read().strip()
     except FileNotFoundError: return JSONResponse(status_code=500, content={"ai_response": "Ошибка: Файлы настроек не найдены."})
     
@@ -332,20 +329,43 @@ async def handle_chat(chat_request: ChatRequest, username: str = Depends(get_cur
         ai_response_text = f"Ошибка при обращении к ИИ ({model_name}): {str(e)}"
     return {"ai_response": ai_response_text}
 
-# --- Управление пользователями (новая вкладка в админке) ---
+# УБРАЛИ Depends(get_current_admin_username) для отладки
+@app.post("/api/upload-document")
+async def upload_document(file: UploadFile = File(...)): # <-- ИЗМЕНЕНО
+    file_path = os.path.join(DOCS_DIR, file.filename)
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    load_and_process_document(file_path)
+    return JSONResponse(content={"message": f"Файл '{file.filename}' успешно загружен и обработан."}, status_code=200)
+
+# УБРАЛИ Depends(get_current_admin_username) для отладки
+@app.get("/api/documents")
+async def get_documents(): # <-- ИЗМЕНЕНО
+    files = [f for f in os.listdir(DOCS_DIR) if os.path.isfile(os.path.join(DOCS_DIR, f))]
+    return JSONResponse(content={"documents": files})
+
+# УБРАЛИ Depends(get_current_admin_username) для отладки
+@app.delete("/api/documents/{filename}")
+async def delete_document(filename: str): # <-- ИЗМЕНЕНО
+    file_path = os.path.join(DOCS_DIR, filename)
+    if os.path.exists(file_path):
+        os.remove(file_path)
+        print(f"INFO: Файл {filename} удален. Для полной очистки базы ее нужно пересоздать.")
+        return JSONResponse(content={"message": f"Файл '{filename}' удален."}, status_code=200)
+    else:
+        raise HTTPException(status_code=404, detail="Файл не найден")
+
+# УБРАЛИ Depends(get_current_admin_username) для отладки
 @app.get("/api/users", response_class=JSONResponse)
-async def get_users(username: str = Depends(get_current_admin_username)):
+async def get_users(): # <-- ИЗМЕНЕНО
     conn = get_db_connection()
     users = conn.execute("SELECT id, username FROM users").fetchall()
     conn.close()
     return {"users": [{"id": user["id"], "username": user["username"]} for user in users]}
 
-class UserCreate(BaseModel):
-    username: str
-    password: str
-
+# УБРАЛИ Depends(get_current_admin_username) для отладки
 @app.post("/api/users", response_class=JSONResponse)
-async def add_user(user_data: UserCreate, username: str = Depends(get_current_admin_username)):
+async def add_user(user_data: UserCreate): # <-- ИЗМЕНЕНО
     if not user_data.username or not user_data.password:
         raise HTTPException(status_code=400, detail="Логин и пароль не могут быть пустыми.")
     if create_user(user_data.username, user_data.password):
@@ -353,19 +373,17 @@ async def add_user(user_data: UserCreate, username: str = Depends(get_current_ad
     else:
         raise HTTPException(status_code=400, detail=f"Пользователь '{user_data.username}' уже существует.")
 
-class UserUpdatePassword(BaseModel):
-    user_id: int
-    new_password: str
-
+# УБРАЛИ Depends(get_current_admin_username) для отладки
 @app.put("/api/users/{user_id}", response_class=JSONResponse)
-async def update_password(user_id: int, user_data: UserUpdatePassword, username: str = Depends(get_current_admin_username)):
+async def update_password(user_id: int, user_data: UserUpdatePassword): # <-- ИЗМЕНЕНО
     if not user_data.new_password:
         raise HTTPException(status_code=400, detail="Новый пароль не может быть пустым.")
     update_user_password(user_id, user_data.new_password)
     return {"message": f"Пароль пользователя ID {user_id} успешно обновлен."}
 
+# УБРАЛИ Depends(get_current_admin_username) для отладки
 @app.delete("/api/users/{user_id}", response_class=JSONResponse)
-async def remove_user(user_id: int, username: str = Depends(get_current_admin_username)):
+async def remove_user(user_id: int): # <-- ИЗМЕНЕНО
     delete_user(user_id)
     return {"message": f"Пользователь ID {user_id} успешно удален."}
 
@@ -397,7 +415,7 @@ def process_lead_in_background(lead_id: str):
     if not lead_data: print(f"BACKGROUND ERROR: Не удалось получить данные лида {lead_id}, прерываем."); return 
     task_text = lead_data.get("COMMENTS", "Текст ТЗ не найден.")
     try:
-        with open(PROMPT_NIKOLAI_FILE, "r") as f: system_prompt = f.read().strip() # Читаем из prompt.txt
+        with open(PROMPT_NIKOLAI_FILE, "r") as f: system_prompt = f.read().strip()
         with open(CURRENT_MODEL_FILE, "r") as f: model_name = f.read().strip()
     except FileNotFoundError:
         error_message = "Ошибка: Файлы настроек не найдены!"
@@ -434,23 +452,17 @@ async def b24_hook(req: Request, background_tasks: BackgroundTasks):
     return {"status": "ok, task accepted"}
 
 # --- Мосса Ассистент (для коллег) ---
-# Аутентификация для Мосса Ассистента
 class UserLogin(BaseModel):
     username: str
     password: str
 
 def create_session_token(data: dict):
-    # Для простоты, пока используем простой токен сессии. В реальном приложении можно использовать JWT.
     return secrets.token_urlsafe(32)
 
-# Зависимость для проверки авторизации пользователя Мосса Ассистента
 def get_current_mossa_user(request: Request):
     session_token = request.cookies.get("mossa_session")
     if not session_token:
-        # Если куки нет, перенаправляем на страницу логина
         raise HTTPException(status_code=302, detail="Не авторизован", headers={"Location": "/mossaassistant/login"})
-    # В реальном приложении здесь должна быть проверка токена на валидность и срок действия
-    # Для простоты, пока просто проверяем наличие куки
     return session_token
 
 @app.post("/mossaassistant/login")
@@ -462,9 +474,8 @@ async def login_for_access_token(response: Response, form_data: UserLogin):
             detail="Неверный логин или пароль",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    # Устанавливаем куку сессии
     session_token = create_session_token({"sub": user["username"]})
-    response.set_cookie(key="mossa_session", value=session_token, httponly=True, max_age=3600*24) # Кука на 24 часа
+    response.set_cookie(key="mossa_session", value=session_token, httponly=True, max_age=3600*24)
     return RedirectResponse(url="/mossaassistant/chat", status_code=302)
 
 @app.get("/mossaassistant", response_class=RedirectResponse)
@@ -477,14 +488,13 @@ async def mossaassistant_login_page(request: Request):
 
 @app.get("/mossaassistant/chat", response_class=HTMLResponse)
 async def mossaassistant_chat_page(request: Request, user_session: str = Depends(get_current_mossa_user)):
-    # Если get_current_mossa_user не выбросил HTTPException, значит пользователь авторизован
     return templates.TemplateResponse("chat_mossaassistant.html", {"request": request})
 
 @app.post("/mossaassistant/api/chat", response_class=JSONResponse)
 async def mossaassistant_handle_chat(chat_request: ChatRequest, user_session: str = Depends(get_current_mossa_user)):
     try:
-        with open(PROMPT_MOSSAASSISTANT_FILE, "r") as f: system_prompt = f.read().strip() # Читаем из prompt_mossaassistant.txt
-        with open(CURRENT_MODEL_FILE, "r") as f: model_name = f.read().strip() # Модель общая
+        with open(PROMPT_MOSSAASSISTANT_FILE, "r") as f: system_prompt = f.read().strip()
+        with open(CURRENT_MODEL_FILE, "r") as f: model_name = f.read().strip()
     except FileNotFoundError: return JSONResponse(status_code=500, content={"ai_response": "Ошибка: Файлы настроек не найдены."})
     
     try:
