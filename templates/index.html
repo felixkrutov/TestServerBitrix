@@ -30,7 +30,6 @@
         .upload-area { display: flex; gap: 1rem; align-items: center; padding: 15px; border: 1px solid #6c757d; border-radius: 0.25rem; }
         .file-name-display { background-color: #495057; padding: 0.375rem 0.75rem; border-radius: 0.25rem; border: 1px solid #6c757d; flex-grow: 1; text-align: left; color: #ccc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         
-        /* Стили для тестового чата */
         #chat-history { background-color: #2c3034; height: 400px; overflow-y: auto; border: 1px solid #495057; padding: 10px; margin-bottom: 1rem; display: flex; flex-direction: column; }
         .message-block { display: flex; flex-direction: column; margin-bottom: 1rem; max-width: 80%; }
         .message-content { padding: 0.5rem 1rem; border-radius: 0.5rem; word-wrap: break-word; color: #fff; }
@@ -43,7 +42,6 @@
         .ai-message .message-time { text-align: left; }
         .chat-pane-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
 
-        /* Стили для журнала изменений */
         #changelog-list { max-height: 400px; overflow-y: auto; margin-bottom: 1rem; }
         .changelog-entry { background-color: #495057; padding: 1rem; border-radius: 0.5rem; margin-bottom: 1rem; }
         .changelog-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
@@ -323,7 +321,7 @@
                         <button class="delete-changelog-btn" title="Удалить"><i class="bi bi-trash"></i></button>
                     </div>
                 </div>
-                <div class="changelog-content">${entry.content}</div>
+                <div class="changelog-content">${entry.content.replace(/\n/g, '<br>')}</div>
             `;
             changelogListEl.appendChild(entryEl);
         });
@@ -344,6 +342,7 @@
         const content = newChangelogEntryTextarea.value.trim();
         if (!content) return;
         try {
+            // ИСПРАВЛЕНИЕ: Отправляем JSON вместо FormData
             const response = await fetch('/api/changelog', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
