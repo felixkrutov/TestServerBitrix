@@ -379,12 +379,12 @@ def get_current_mossa_user(request: Request):
     return session_token
 
 @app.post("/mossaassistant/login")
-async def login_for_access_token(response: Response, username: str = Form(...), password: str = Form(...)): # <-- ИЗМЕНЕНО
+async def login_for_access_token(response: Response, request: Request, username: str = Form(...), password: str = Form(...)): # <-- ИЗМЕНЕНО
     user = get_user(username)
     if not user or not verify_password(password, user["hashed_password"]):
         # Не выбрасываем ошибку, а возвращаем на страницу логина с сообщением
         return templates.TemplateResponse("login_mossaassistant.html", {
-            "request": response,
+            "request": request,
             "error": "Неверный логин или пароль"
         })
     
