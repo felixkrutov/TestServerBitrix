@@ -12,7 +12,6 @@
         h1, h2, h3, h4, h5, h6, p, label, .card-header, .nav-link { color: #fff !important; } 
         .card { background-color: #343a40; border-color: #495057; height: 100%; }
         .card-header { background-color: #495057; border-bottom: 1px solid #495057; }
-        /* ИЗМЕНЕНИЕ: Добавлен отступ для заголовков колонок */
         .row .col-lg-6 .card-header {
             padding-top: 1rem;
             padding-bottom: 1rem;
@@ -27,9 +26,12 @@
         .nav-tabs { border-bottom: none; }
         .nav-tabs .nav-link { border-color: #495057; }
         .nav-tabs .nav-link.active { background-color: #495057; border-color: #495057; }
+        /* ИЗМЕНЕНИЕ: Добавлена разделительная полоска */
+        .tab-content {
+            border-top: 1px solid #495057;
+        }
         .tab-content > .tab-pane .card-body { min-height: 550px; }
         .item-list-item { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; border-bottom: 1px solid #495057; }
-        /* ИЗМЕНЕНИЕ: Стили для текста в списках, чтобы он не выезжал и был белым */
         .item-list-item span {
             color: #f8f9fa;
             white-space: nowrap;
@@ -133,7 +135,7 @@
                                         <textarea class="form-control" id="prompt_nikolai" name="prompt" rows="10">{{ system_prompt_nikolai }}</textarea>
                                     </div>
                                     <div class="form-check form-switch mb-3">
-                                        <input type="checkbox" class="form-check-input" id="use_rag_nikolai" name="use_rag_nikolai" {% if use_rag_nikolai %}checked{% endif %}>
+                                        <input type="checkbox" class="form-check-input" id="use_rag_nikolai" name="use_rag_nikolai" value="true" {% if use_rag_nikolai %}checked{% endif %}>
                                         <label class="form-check-label" for="use_rag_nikolai">Использовать Базу Знаний (RAG)</label>
                                     </div>
                                     <button type="submit" class="btn btn-success">Сохранить и Перезапустить</button>
@@ -194,7 +196,7 @@
                                         <textarea class="form-control" id="prompt_mossa" name="prompt" rows="10">{{ system_prompt_mossa }}</textarea>
                                     </div>
                                     <div class="form-check form-switch mb-3">
-                                        <input type="checkbox" class="form-check-input" id="use_rag_mossa" name="use_rag_mossa" {% if use_rag_mossa %}checked{% endif %}>
+                                        <input type="checkbox" class="form-check-input" id="use_rag_mossa" name="use_rag_mossa" value="true" {% if use_rag_mossa %}checked{% endif %}>
                                         <label class="form-check-label" for="use_rag_mossa">Использовать Базу Знаний (RAG)</label>
                                     </div>
                                     <button type="submit" class="btn btn-success">Сохранить и Перезапустить</button>
@@ -275,6 +277,8 @@
     }
 
     // --- Логика для Николая (Битрикс) ---
+    const nikolaiTestChatHistory = []; // ИЗМЕНЕНИЕ: Память для тестового чата
+
     document.getElementById('nikolaiSettingsForm').addEventListener('submit', async function(e) {
         e.preventDefault();
         const formData = new FormData(this);
@@ -292,26 +296,38 @@
         const message = userInput.value.trim();
         if (!message) return;
         
-        const chatHistory = document.getElementById('chat-history');
-        const userMsgBlock = document.createElement('div');
-        userMsgBlock.className = 'message-block user-message';
-        userMsgBlock.innerHTML = `<div class="message-content">${message}</div>`;
-        chatHistory.appendChild(userMsgBlock);
+        nikolaiTestChatHistory.push({ role: 'user', content: message });
         userInput.value = '';
         
+        // ИЗМЕНЕНИЕ: Перерисовываем чат из памяти
+        const chatHistoryEl = document.getElementById('chat-history');
+        chatHistoryEl.innerHTML = '';
+        nikolaiTestChatHistory.forEach(msg => {
+            const msgBlock = document.createElement('div');
+            msgBlock.className = `message-block ${msg.role}-message`;
+            msgBlock.innerHTML = `<div class="message-content">${msg.content}</div>`;
+            chatHistoryEl.appendChild(msgBlock);
+        });
+        
         document.getElementById('loading-indicator').style.display = 'block';
+        chatHistoryEl.scrollTop = chatHistoryEl.scrollHeight;
+
         try {
             const response = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_message: message }) });
             const data = await response.json();
+            
+            nikolaiTestChatHistory.push({ role: 'ai', content: data.ai_response });
+            
             const aiMsgBlock = document.createElement('div');
             aiMsgBlock.className = 'message-block ai-message';
             aiMsgBlock.innerHTML = `<div class="message-content">${data.ai_response}</div>`;
-            chatHistory.appendChild(aiMsgBlock);
+            chatHistoryEl.appendChild(aiMsgBlock);
+
         } catch (error) {
             alert('Ошибка чата: ' + error);
         } finally {
             document.getElementById('loading-indicator').style.display = 'none';
-            chatHistory.scrollTop = chatHistory.scrollHeight;
+            chatHistoryEl.scrollTop = chatHistoryEl.scrollHeight;
         }
     });
 
