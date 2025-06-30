@@ -1,1 +1,298 @@
 
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Мосса Ассистент</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+    <style>
+        body {
+            background-color: #171717; /* Глубокий черный */
+            color: #E5E5E5; /* Светло-серый текст */
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            margin: 0;
+        }
+        .chat-header {
+            background-color: #2A2A2A; /* Темно-серый хедер */
+            padding: 15px 20px;
+            border-bottom: 1px solid #3A3A3A;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: #E5E5E5;
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+        .chat-header .logout-btn {
+            background: none;
+            border: none;
+            color: #A0A0A0;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: color 0.2s ease-in-out;
+        }
+        .chat-header .logout-btn:hover {
+            color: #E5E5E5;
+        }
+        .chat-container {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end; /* Сообщения прижимаются к низу */
+            padding: 20px;
+            overflow-y: auto;
+            max-width: 800px; /* Ограничиваем ширину чата */
+            margin: 0 auto; /* Выравниваем по центру */
+            width: 100%;
+        }
+        .message-block {
+            display: flex;
+            align-items: flex-start; /* Выравнивание иконки и текста по верху */
+            margin-bottom: 15px;
+            max-width: 100%; /* Сообщение не будет шире контейнера */
+        }
+        .message-icon {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background-color: #4A4A4A;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 1.1rem;
+            flex-shrink: 0; /* Не сжимать иконку */
+            color: #E5E5E5;
+        }
+        .message-content-wrapper {
+            flex-grow: 1;
+            padding: 10px 15px;
+            border-radius: 10px;
+            word-wrap: break-word;
+            white-space: pre-wrap; /* Сохраняет переносы строк из ответа ИИ */
+            line-height: 1.5;
+            font-size: 0.95rem;
+            max-width: calc(100% - 45px); /* Учитываем ширину иконки и отступ */
+        }
+        .user-message .message-icon {
+            order: 2; /* Иконка пользователя справа */
+            margin-left: 15px;
+            background-color: #4A90E2; /* Синий для пользователя */
+        }
+        .user-message .message-content-wrapper {
+            order: 1; /* Контент пользователя слева от иконки */
+            background-color: #4A90E2; /* Синий фон сообщения */
+            color: #FFFFFF;
+            margin-right: auto; /* Выравнивание сообщения пользователя влево */
+        }
+        .ai-message .message-icon {
+            order: 1; /* Иконка ИИ слева */
+            margin-right: 15px;
+            background-color: #2A2A2A; /* Темно-серый для ИИ */
+        }
+        .ai-message .message-content-wrapper {
+            order: 2; /* Контент ИИ справа от иконки */
+            background-color: #2A2A2A; /* Темно-серый фон сообщения */
+            color: #E5E5E5;
+            margin-left: auto; /* Выравнивание сообщения ИИ вправо */
+        }
+        .input-area {
+            background-color: #2A2A2A; /* Темно-серый фон поля ввода */
+            padding: 20px;
+            border-top: 1px solid #3A3A3A;
+            display: flex;
+            align-items: flex-end;
+            position: sticky; /* Приклеиваем к низу */
+            bottom: 0;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .input-area textarea {
+            flex-grow: 1;
+            background-color: #3A3A3A;
+            border: 1px solid #4A4A4A;
+            color: #E5E5E5;
+            padding: 12px 15px;
+            border-radius: 8px;
+            resize: none; /* Запрещаем ручное изменение размера */
+            min-height: 50px; /* Минимальная высота */
+            max-height: 200px; /* Максимальная высота */
+            transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+        }
+        .input-area textarea:focus {
+            border-color: #4A90E2;
+            box-shadow: 0 0 0 0.25rem rgba(74, 144, 226, 0.25);
+            background-color: #3A3A3A;
+            color: #E5E5E5;
+        }
+        .input-area textarea::placeholder {
+            color: #A0A0A0;
+        }
+        .input-area button {
+            background-color: #4A90E2;
+            border: none;
+            color: #FFFFFF;
+            width: 45px;
+            height: 45px;
+            border-radius: 8px;
+            margin-left: 15px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 1.2rem;
+            transition: background-color 0.2s ease-in-out;
+            flex-shrink: 0;
+        }
+        .input-area button:hover:not(:disabled) {
+            background-color: #3A7BD5;
+        }
+        .input-area button:disabled {
+            background-color: #6A6A6A;
+            cursor: not-allowed;
+        }
+        .loading-indicator {
+            display: flex;
+            align-items: center;
+            margin-top: 10px;
+            color: #A0A0A0;
+            font-size: 0.9rem;
+        }
+        .loading-indicator .spinner-grow {
+            width: 1rem;
+            height: 1rem;
+            margin-right: 8px;
+            color: #4A90E2;
+        }
+        /* Анимация появления сообщения */
+        .message-block.fade-in {
+            animation: fadeIn 0.5s ease-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-header">
+        <span>Мосса Ассистент</span>
+        <button class="logout-btn" id="logoutBtn">Выйти</button>
+    </div>
+
+    <div class="chat-container" id="chat-history">
+        <!-- Сообщения будут добавляться сюда -->
+    </div>
+
+    <div class="input-area">
+        <textarea id="user-input" placeholder="Спросите что-нибудь..." rows="1"></textarea>
+        <button id="send-btn" disabled><i class="bi bi-send-fill"></i></button>
+    </div>
+
+    <div class="loading-indicator" id="loading-indicator" style="display: none;">
+        <div class="spinner-grow spinner-grow-sm" role="status"></div>
+        <span>Думаю...</span>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const chatHistory = document.getElementById('chat-history');
+        const userInput = document.getElementById('user-input');
+        const sendBtn = document.getElementById('send-btn');
+        const loadingIndicator = document.getElementById('loading-indicator');
+        const logoutBtn = document.getElementById('logoutBtn');
+
+        // Автоматическое изменение высоты textarea
+        userInput.addEventListener('input', () => {
+            userInput.style.height = 'auto';
+            userInput.style.height = userInput.scrollHeight + 'px';
+            // Активация/деактивация кнопки отправки
+            sendBtn.disabled = userInput.value.trim() === '';
+        });
+
+        // Изначальная проверка при загрузке
+        userInput.dispatchEvent(new Event('input'));
+
+        function addMessageToHistory(message, sender) {
+            const messageBlock = document.createElement('div');
+            messageBlock.className = `message-block ${sender}-message fade-in`; // Добавляем fade-in класс
+            
+            const iconDiv = document.createElement('div');
+            iconDiv.className = 'message-icon';
+            iconDiv.innerHTML = sender === 'user' ? '<i class="bi bi-person-fill"></i>' : '<i class="bi bi-robot"></i>'; // Иконки
+
+            const contentWrapper = document.createElement('div');
+            contentWrapper.className = 'message-content-wrapper';
+            contentWrapper.textContent = message;
+
+            messageBlock.appendChild(iconDiv);
+            messageBlock.appendChild(contentWrapper);
+            chatHistory.appendChild(messageBlock);
+            chatHistory.scrollTop = chatHistory.scrollHeight; // Прокрутка вниз
+        }
+
+        sendBtn.addEventListener('click', async () => {
+            const message = userInput.value.trim();
+            if (!message) return;
+
+            addMessageToHistory(message, 'user');
+            userInput.value = '';
+            userInput.style.height = 'auto'; // Сброс высоты после отправки
+            sendBtn.disabled = true; // Деактивируем кнопку
+
+            loadingIndicator.style.display = 'flex'; // Показываем индикатор
+
+            try {
+                const response = await fetch('/mossaassistant/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ user_message: message })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || `Ошибка сервера: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                addMessageToHistory(data.ai_response, 'ai');
+            } catch (error) {
+                addMessageToHistory(`Ошибка: ${error.message}`, 'ai');
+            } finally {
+                loadingIndicator.style.display = 'none'; // Скрываем индикатор
+                sendBtn.disabled = false; // Активируем кнопку
+            }
+        });
+
+        userInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault(); // Предотвращаем перенос строки
+                sendBtn.click(); // Отправляем сообщение
+            }
+        });
+
+        logoutBtn.addEventListener('click', async () => {
+            try {
+                const response = await fetch('/mossaassistant/logout', { method: 'POST' });
+                if (response.ok) {
+                    window.location.href = '/mossaassistant/login'; // Перенаправляем на страницу входа
+                } else {
+                    alert('Ошибка выхода из системы.');
+                }
+            } catch (error) {
+                alert('Ошибка сети при выходе.');
+            }
+        });
+
+        // Приветственное сообщение при загрузке
+        window.onload = () => {
+            addMessageToHistory("Привет! Я — Мосса Ассистент. Чем могу помочь?", "ai");
+        };
+    </script>
+</body>
+</html>
