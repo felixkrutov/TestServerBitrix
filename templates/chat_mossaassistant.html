@@ -6,8 +6,8 @@
     <title>Мосса Ассистент</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
     <style>
-                :root {
-            --bg-main: #343541;
+                       :root {
+            --bg-main: #212121;
             --bg-sidebar: #171717;
             --bg-input: #40414f;
             --bg-input-border: rgba(86, 88, 105, 1);
@@ -184,7 +184,6 @@
             background: linear-gradient(to top, var(--bg-main) 50%, transparent);
         }
         
-        /* --- ИЗМЕНЕННЫЙ БЛОК СТИЛЕЙ ДЛЯ ПОЛЯ ВВОДА --- */
         .input-area {
             max-width: 800px;
             margin: 0 auto;
@@ -195,10 +194,6 @@
             border: 1px solid var(--bg-input-border);
             border-radius: 12px;
             padding: 0.75rem;
-            transition: border-color 0.2s ease;
-        }
-        .input-area:focus-within {
-            border-color: var(--accent-color);
         }
 
         #user-input {
@@ -234,7 +229,6 @@
             background-color: #555;
             cursor: not-allowed;
         }
-        /* --- КОНЕЦ ИЗМЕНЕННОГО БЛОКА --- */
 
         #welcome-screen {
             display: flex;
