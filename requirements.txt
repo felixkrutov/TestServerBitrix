@@ -16,3 +16,4 @@ langchain-community
 langchain-experimental
 unstructured
 langchain-openai
+passlib
