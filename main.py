@@ -12,7 +12,7 @@ from fastapi import FastAPI, Request, HTTPException, Depends, Form, BackgroundTa
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel # <-- BaseModel импортируется здесь
+from pydantic import BaseModel
 
 # --- Импорты для API ---
 import openai
@@ -241,9 +241,9 @@ def get_ai_response(model_name: str, system_prompt_content: str, user_query: str
         raise ValueError(f"Ошибка: Неизвестный провайдер для модели '{model_name}'.")
 
 # --- Админ-панель "Николай" (http://your_ip/) ---
-# УБРАЛИ Depends(get_current_admin_username) для отладки
+# ВОЗВРАЩАЕМ Depends(get_current_admin_username)
 @app.get("/", response_class=HTMLResponse)
-async def read_admin_ui(request: Request):
+async def read_admin_ui(request: Request, username: str = Depends(get_current_admin_username)): # <-- ВОЗВРАЩЕНО
     default_models = ["o4-mini-2025-04-16", "gemini-2.5-pro"]
     try:
         with open(MODELS_LIST_FILE, "r") as f: models_list = [line.strip() for line in f]
@@ -277,23 +277,23 @@ async def read_admin_ui(request: Request):
         "users_list": [{"id": user["id"], "username": user["username"]} for user in users_list]
     })
 
-# УБРАЛИ Depends(get_current_admin_username) для отладки
+# ВОЗВРАЩАЕМ Depends(get_current_admin_username)
 @app.get("/api/status")
-async def get_status():
+async def get_status(username: str = Depends(get_current_admin_username)): # <-- ВОЗВРАЩЕНО
     try: result = subprocess.run(["systemctl", "is-active", "bitrix-gpt.service"], capture_output=True, text=True); status = result.stdout.strip()
     except FileNotFoundError: status = "failed"
     return {"status": status}
 
-# УБРАЛИ Depends(get_current_admin_username) для отладки
+# ВОЗВРАЩАЕМ Depends(get_current_admin_username)
 @app.get("/api/logs")
-async def get_logs():
+async def get_logs(username: str = Depends(get_current_admin_username)): # <-- ВОЗВРАЩЕНО
     try: result = subprocess.run(["journalctl", "-u", "bitrix-gpt.service", "--since", "5 minutes ago", "--no-pager"], capture_output=True, text=True); logs = result.stdout
     except FileNotFoundError: logs = "Не удалось загрузить логи."
     return {"logs": logs}
 
-# УБРАЛИ Depends(get_current_admin_username) для отладки
+# ВОЗВРАЩАЕМ Depends(get_current_admin_username)
 @app.get("/api/settings")
-async def get_settings():
+async def get_settings(username: str = Depends(get_current_admin_username)): # <-- ВОЗВРАЩЕНО
     default_models = ["o4-mini-2025-04-16", "gemini-2.5-pro"]
     try:
         with open(MODELS_LIST_FILE, "r") as f: models_list = [line.strip() for line in f]
@@ -314,9 +314,10 @@ async def get_settings():
         "use_rag": use_rag_setting
     }
 
-# УБРАЛИ Depends(get_current_admin_username) для отладки
+# ВОЗВРАЩАЕМ Depends(get_current_admin_username)
 @app.post("/api/settings")
 async def save_settings(
+    username: str = Depends(get_current_admin_username), # <-- ВОЗВРАЩЕНО
     model: str = Form(...),
     prompt: str = Form(...),
     use_rag: bool = Form(False)
@@ -331,9 +332,9 @@ async def save_settings(
     
     return {"status": "ok"}
 
-# УБРАЛИ Depends(get_current_admin_username) для отладки
+# ВОЗВРАЩАЕМ Depends(get_current_admin_username)
 @app.post("/api/chat")
-async def handle_chat(chat_request: ChatRequest):
+async def handle_chat(chat_request: ChatRequest, username: str = Depends(get_current_admin_username)): # <-- ВОЗВРАЩЕНО
     try:
         with open(PROMPT_NIKOLAI_FILE, "r") as f: system_prompt = f.read().strip()
         with open(CURRENT_MODEL_FILE, "r") as f: model_name = f.read().strip()
@@ -345,24 +346,24 @@ async def handle_chat(chat_request: ChatRequest):
         ai_response_text = f"Ошибка при обращении к ИИ ({model_name}): {str(e)}"
     return {"ai_response": ai_response_text}
 
-# УБРАЛИ Depends(get_current_admin_username) для отладки
+# ВОЗВРАЩАЕМ Depends(get_current_admin_username)
 @app.post("/api/upload-document")
-async def upload_document(file: UploadFile = File(...)):
+async def upload_document(file: UploadFile = File(...), username: str = Depends(get_current_admin_username)): # <-- ВОЗВРАЩЕНО
     file_path = os.path.join(DOCS_DIR, file.filename)
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
     load_and_process_document(file_path)
     return JSONResponse(content={"message": f"Файл '{file.filename}' успешно загружен и обработан."}, status_code=200)
 
-# УБРАЛИ Depends(get_current_admin_username) для отладки
+# ВОЗВРАЩАЕМ Depends(get_current_admin_username)
 @app.get("/api/documents")
-async def get_documents():
+async def get_documents(username: str = Depends(get_current_admin_username)): # <-- ВОЗВРАЩЕНО
     files = [f for f in os.listdir(DOCS_DIR) if os.path.isfile(os.path.join(DOCS_DIR, f))]
     return JSONResponse(content={"documents": files})
 
-# УБРАЛИ Depends(get_current_admin_username) для отладки
+# ВОЗВРАЩАЕМ Depends(get_current_admin_username)
 @app.delete("/api/documents/{filename}")
-async def delete_document(filename: str):
+async def delete_document(filename: str, username: str = Depends(get_current_admin_username)): # <-- ВОЗВРАЩЕНО
     file_path = os.path.join(DOCS_DIR, filename)
     if os.path.exists(file_path):
         os.remove(file_path)
@@ -371,17 +372,17 @@ async def delete_document(filename: str):
     else:
         raise HTTPException(status_code=404, detail="Файл не найден")
 
-# УБРАЛИ Depends(get_current_admin_username) для отладки
+# ВОЗВРАЩАЕМ Depends(get_current_admin_username)
 @app.get("/api/users", response_class=JSONResponse)
-async def get_users():
+async def get_users(username: str = Depends(get_current_admin_username)): # <-- ВОЗВРАЩЕНО
     conn = get_db_connection()
     users = conn.execute("SELECT id, username FROM users").fetchall()
     conn.close()
     return {"users": [{"id": user["id"], "username": user["username"]} for user in users]}
 
-# УБРАЛИ Depends(get_current_admin_username) для отладки
+# ВОЗВРАЩАЕМ Depends(get_current_admin_username)
 @app.post("/api/users", response_class=JSONResponse)
-async def add_user(user_data: UserCreate):
+async def add_user(user_data: UserCreate, username: str = Depends(get_current_admin_username)): # <-- ВОЗВРАЩЕНО
     if not user_data.username or not user_data.password:
         raise HTTPException(status_code=400, detail="Логин и пароль не могут быть пустыми.")
     if create_user(user_data.username, user_data.password):
@@ -389,17 +390,17 @@ async def add_user(user_data: UserCreate):
     else:
         raise HTTPException(status_code=400, detail=f"Пользователь '{user_data.username}' уже существует.")
 
-# УБРАЛИ Depends(get_current_admin_username) для отладки
+# ВОЗВРАЩАЕМ Depends(get_current_admin_username)
 @app.put("/api/users/{user_id}", response_class=JSONResponse)
-async def update_password(user_id: int, user_data: UserUpdatePassword):
+async def update_password(user_id: int, user_data: UserUpdatePassword, username: str = Depends(get_current_admin_username)): # <-- ВОЗВРАЩЕНО
     if not user_data.new_password:
         raise HTTPException(status_code=400, detail="Новый пароль не может быть пустым.")
     update_user_password(user_id, user_data.new_password)
     return {"message": f"Пароль пользователя ID {user_id} успешно обновлен."}
 
-# УБРАЛИ Depends(get_current_admin_username) для отладки
+# ВОЗВРАЩАЕМ Depends(get_current_admin_username)
 @app.delete("/api/users/{user_id}", response_class=JSONResponse)
-async def remove_user(user_id: int):
+async def remove_user(user_id: int, username: str = Depends(get_current_admin_username)): # <-- ВОЗВРАЩЕНО
     delete_user(user_id)
     return {"message": f"Пользователь ID {user_id} успешно удален."}
 
