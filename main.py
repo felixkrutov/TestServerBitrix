@@ -41,7 +41,6 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 class ChatRequest(BaseModel):
     user_message: str
 
-# НОВЫЕ МОДЕЛИ ДЛЯ ЧАТА МОССА АССИСТЕНТА
 class MossaChatRequest(BaseModel):
     user_message: str
     chat_id: int | None = None
@@ -129,14 +128,12 @@ USE_RAG = load_rag_setting()
 def get_db_connection():
     conn = sqlite3.connect(USERS_DB_FILE)
     conn.row_factory = sqlite3.Row
-    # Включаем поддержку внешних ключей для каскадного удаления
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
 def initialize_database():
     conn = get_db_connection()
     cursor = conn.cursor()
-    # Таблица пользователей
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -144,7 +141,6 @@ def initialize_database():
             hashed_password TEXT NOT NULL
         )
     """)
-    # НОВАЯ ТАБЛИЦА: Сессии для Мосса Ассистента
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS sessions (
             session_token TEXT PRIMARY KEY,
@@ -153,7 +149,6 @@ def initialize_database():
             FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
         )
     """)
-    # НОВАЯ ТАБЛИЦА: Чаты для Мосса Ассистента
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS chats (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -163,7 +158,6 @@ def initialize_database():
             FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
         )
     """)
-    # НОВАЯ ТАБЛИЦА: Сообщения для Мосса Ассистента
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -223,7 +217,7 @@ def update_user_password(user_id: int, new_password: str):
 @app.on_event("startup")
 def on_startup():
     print("INFO: Сервер запущен. Инициализация базы данных...")
-    initialize_database() # ИЗМЕНЕНО: Вызываем новую функцию
+    initialize_database()
 
 def get_current_admin_username(credentials: HTTPBasicCredentials = Depends(security)):
     correct_username = secrets.compare_digest(credentials.username, ADMIN_USERNAME)
@@ -244,19 +238,17 @@ def get_ai_response(model_name: str, system_prompt_content: str, user_query: str
         print("INFO: Использование базы знаний отключено.")
 
     messages = []
-    # Формируем системный промпт
     final_system_prompt = system_prompt_content
     if context:
         final_system_prompt += f"\n\nИспользуй следующий контекст из базы знаний для ответа:\n<context>\n{context}\n</context>"
     messages.append({"role": "system", "content": final_system_prompt})
 
-    # Добавляем историю чата, если она есть
     if chat_history:
         for msg in chat_history:
             messages.append({"role": msg["role"], "content": msg["content"]})
 
-    # Добавляем текущий запрос пользователя
-    messages.append({"role": "user", "content": user_query})
+    if user_query:
+        messages.append({"role": "user", "content": user_query})
 
     if model_name.startswith("gpt-") or model_name.startswith("o4-"):
         print(f"INFO: Используется OpenAI API для модели {model_name}")
@@ -264,7 +256,6 @@ def get_ai_response(model_name: str, system_prompt_content: str, user_query: str
         response = openai_client.chat.completions.create(model=model_name, messages=messages)
         return response.choices[0].message.content
     elif model_name.startswith("gemini-"):
-        # Gemini API имеет другой формат для истории, адаптируем
         print(f"INFO: Используется Gemini API для модели {model_name}")
         if not GEMINI_API_KEY: raise ValueError("GEMINI_API_KEY не установлен.")
         model = genai.GenerativeModel(model_name, system_instruction=final_system_prompt)
@@ -473,37 +464,39 @@ async def b24_hook(req: Request, background_tasks: BackgroundTasks):
     print(f"DEBUG: Задача для лида {lead_id} добавлена в фон. Мгновенно отвечаем Битрикс24.")
     return {"status": "ok, task accepted"}
 
-# --- Мосса Ассистент (ПОЛНОСТЬЮ ПЕРЕРАБОТАННЫЙ БЛОК) ---
+# --- Мосса Ассистент ---
 
-# НОВАЯ ФУНКЦИЯ: Зависимость для получения текущего пользователя по токену сессии
 async def get_current_mossa_user(request: Request):
     session_token = request.cookies.get("mossa_session")
+    login_url = "/mossaassistant/login"
+
     if not session_token:
-        raise HTTPException(status_code=401, detail="Не авторизован")
-    
+        raise HTTPException(status_code=307, detail="Не авторизован", headers={"Location": login_url})
+
     conn = get_db_connection()
     session = conn.execute(
         "SELECT user_id, expires_at FROM sessions WHERE session_token = ?", (session_token,)
     ).fetchone()
-    
+
     if not session or datetime.fromisoformat(session["expires_at"]) < datetime.now():
         conn.close()
-        # Если сессия не найдена или истекла, вызываем исключение
-        raise HTTPException(status_code=401, detail="Сессия недействительна или истекла")
-    
+        response = RedirectResponse(url=login_url, status_code=307)
+        response.delete_cookie("mossa_session")
+        raise HTTPException(status_code=307, detail="Сессия недействительна или истекла", headers=response.headers)
+
     user = conn.execute("SELECT * FROM users WHERE id = ?", (session["user_id"],)).fetchone()
     conn.close()
-    if not user:
-        raise HTTPException(status_code=401, detail="Пользователь не найден")
     
-    return user # Возвращаем объект пользователя
+    if not user:
+        response = RedirectResponse(url=login_url, status_code=307)
+        response.delete_cookie("mossa_session")
+        raise HTTPException(status_code=307, detail="Пользователь не найден", headers=response.headers)
+    
+    return user
 
-# НОВАЯ ФУНКЦИЯ: Фоновая задача для генерации названия чата
 def generate_chat_title(chat_id: int, user_message: str):
     try:
-        # Используем простую и быструю модель для этой задачи
         title_prompt = f"Создай очень короткое, лаконичное название (3-5 слов) для чата, который начинается с этого сообщения от пользователя: '{user_message}'. Ответь только названием, без кавычек и лишних слов."
-        # Можно захардкодить модель или взять из настроек
         model_name = "o4-mini-2025-04-16" 
         response = openai_client.chat.completions.create(
             model=model_name,
@@ -526,7 +519,7 @@ async def login_for_access_token(request: Request, username: str = Form(...), pa
         return templates.TemplateResponse("login_mossaassistant.html", {"request": request, "error": "Неверный логин или пароль"})
     
     session_token = secrets.token_urlsafe(32)
-    expires_at = datetime.now() + timedelta(days=7) # Сессия на 7 дней
+    expires_at = datetime.now() + timedelta(days=7)
     
     conn = get_db_connection()
     conn.execute(
@@ -540,7 +533,7 @@ async def login_for_access_token(request: Request, username: str = Form(...), pa
     response.set_cookie(key="mossa_session", value=session_token, httponly=True, max_age=60*60*24*7, samesite="lax")
     return response
 
-@app.post("/mossaassistant/logout")
+@app.post("/mossaassistant/logout", status_code=307)
 async def mossaassistant_logout(request: Request, response: Response):
     session_token = request.cookies.get("mossa_session")
     if session_token:
@@ -548,8 +541,10 @@ async def mossaassistant_logout(request: Request, response: Response):
         conn.execute("DELETE FROM sessions WHERE session_token = ?", (session_token,))
         conn.commit()
         conn.close()
-    response.delete_cookie(key="mossa_session")
-    return RedirectResponse(url="/mossaassistant/login", status_code=303)
+    
+    redirect_response = RedirectResponse(url="/mossaassistant/login", status_code=303)
+    redirect_response.delete_cookie(key="mossa_session")
+    return redirect_response
 
 @app.get("/mossaassistant", response_class=RedirectResponse)
 async def redirect_to_mossaassistant_chat(user: dict = Depends(get_current_mossa_user)):
@@ -563,7 +558,6 @@ async def mossaassistant_login_page(request: Request):
 async def mossaassistant_chat_page(request: Request, user: dict = Depends(get_current_mossa_user)):
     return templates.TemplateResponse("chat_mossaassistant.html", {"request": request, "user": user})
 
-# НОВЫЙ API: Получить все чаты пользователя
 @app.get("/mossaassistant/api/chats", response_class=JSONResponse)
 async def get_user_chats(user: dict = Depends(get_current_mossa_user)):
     conn = get_db_connection()
@@ -574,11 +568,9 @@ async def get_user_chats(user: dict = Depends(get_current_mossa_user)):
     conn.close()
     return {"chats": [{"id": c["id"], "title": c["title"]} for c in chats]}
 
-# НОВЫЙ API: Получить все сообщения в конкретном чате
 @app.get("/mossaassistant/api/chats/{chat_id}/messages", response_class=JSONResponse)
 async def get_chat_messages(chat_id: int, user: dict = Depends(get_current_mossa_user)):
     conn = get_db_connection()
-    # Проверяем, что чат принадлежит пользователю
     chat_owner = conn.execute("SELECT user_id FROM chats WHERE id = ?", (chat_id,)).fetchone()
     if not chat_owner or chat_owner["user_id"] != user["id"]:
         conn.close()
@@ -591,7 +583,6 @@ async def get_chat_messages(chat_id: int, user: dict = Depends(get_current_mossa
     conn.close()
     return {"messages": [{"role": m["role"], "content": m["content"]} for m in messages]}
 
-# ОБНОВЛЕННЫЙ API: Основная логика чата
 @app.post("/mossaassistant/api/chat", response_class=JSONResponse)
 async def mossaassistant_handle_chat(
     chat_request: MossaChatRequest,
@@ -610,7 +601,6 @@ async def mossaassistant_handle_chat(
 
     if not current_chat_id:
         is_new_chat = True
-        # Создаем новый чат
         cursor = conn.cursor()
         cursor.execute(
             "INSERT INTO chats (user_id, title) VALUES (?, ?)",
@@ -618,23 +608,19 @@ async def mossaassistant_handle_chat(
         )
         conn.commit()
         current_chat_id = cursor.lastrowid
-        # Запускаем генерацию названия в фоне
         background_tasks.add_task(generate_chat_title, current_chat_id, chat_request.user_message)
     else:
-        # Проверяем, что чат принадлежит пользователю
         chat_owner = conn.execute("SELECT user_id FROM chats WHERE id = ?", (current_chat_id,)).fetchone()
         if not chat_owner or chat_owner["user_id"] != user["id"]:
             conn.close()
             raise HTTPException(status_code=404, detail="Чат не найден или у вас нет к нему доступа")
 
-    # Сохраняем сообщение пользователя
     conn.execute(
         "INSERT INTO messages (chat_id, role, content) VALUES (?, ?, ?)",
         (current_chat_id, "user", chat_request.user_message)
     )
     conn.commit()
 
-    # Получаем историю для контекста
     history_rows = conn.execute(
         "SELECT role, content FROM messages WHERE chat_id = ? ORDER BY timestamp ASC",
         (current_chat_id,)
@@ -644,7 +630,6 @@ async def mossaassistant_handle_chat(
 
     try:
         ai_response_text = get_ai_response(model_name, system_prompt, "", chat_history=chat_history)
-        # Сохраняем ответ ИИ
         conn = get_db_connection()
         conn.execute(
             "INSERT INTO messages (chat_id, role, content) VALUES (?, ?, ?)",
@@ -657,7 +642,6 @@ async def mossaassistant_handle_chat(
 
     return {"ai_response": ai_response_text, "chat_id": current_chat_id, "is_new_chat": is_new_chat}
 
-# НОВЫЙ API: Переименовать чат
 @app.put("/mossaassistant/api/chats/{chat_id}", response_class=JSONResponse)
 async def rename_chat(
     chat_id: int,
@@ -675,7 +659,6 @@ async def rename_chat(
     conn.close()
     return {"message": "Чат успешно переименован"}
 
-# НОВЫЙ API: Удалить чат
 @app.delete("/mossaassistant/api/chats/{chat_id}", response_class=JSONResponse)
 async def delete_chat(chat_id: int, user: dict = Depends(get_current_mossa_user)):
     conn = get_db_connection()
@@ -684,7 +667,6 @@ async def delete_chat(chat_id: int, user: dict = Depends(get_current_mossa_user)
         conn.close()
         raise HTTPException(status_code=404, detail="Чат не найден или у вас нет к нему доступа")
     
-    # Каскадное удаление само удалит сообщения благодаря PRAGMA foreign_keys = ON
     conn.execute("DELETE FROM chats WHERE id = ?", (chat_id,))
     conn.commit()
     conn.close()
