@@ -12,7 +12,7 @@ from fastapi import FastAPI, Request, HTTPException, Depends, Form, BackgroundTa
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel
+from pydantic import BaseModel # <-- BaseModel импортируется здесь
 
 # --- Импорты для API ---
 import openai
@@ -35,6 +35,23 @@ app = FastAPI()
 security = HTTPBasic()
 templates = Jinja2Templates(directory="templates")
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# --- Pydantic Модели (ПЕРЕМЕЩЕНЫ В НАЧАЛО) ---
+class ChatRequest(BaseModel):
+    user_message: str
+
+class UserLogin(BaseModel):
+    username: str
+    password: str
+
+class UserCreate(BaseModel):
+    username: str
+    password: str
+
+class UserUpdatePassword(BaseModel):
+    user_id: int
+    new_password: str
+# --- КОНЕЦ Pydantic Моделей ---
 
 # --- Пути к файлам и папкам ---
 MODELS_LIST_FILE = "models_list.txt"
@@ -110,7 +127,7 @@ USE_RAG = load_rag_setting()
 # --- Функции для работы с базой данных пользователей ---
 def get_db_connection():
     conn = sqlite3.connect(USERS_DB_FILE)
-    conn.row_factory = sqlite3.Row # Позволяет получать строки как объекты с доступом по имени колонки
+    conn.row_factory = sqlite3.Row
     return conn
 
 def create_users_table():
@@ -147,7 +164,7 @@ def create_user(username: str, password: str):
         cursor.execute("INSERT INTO users (username, hashed_password) VALUES (?, ?)", (username, hashed_password))
         conn.commit()
         return True
-    except sqlite3.IntegrityError: # Пользователь с таким именем уже существует
+    except sqlite3.IntegrityError:
         return False
     finally:
         conn.close()
@@ -171,10 +188,9 @@ def update_user_password(user_id: int, new_password: str):
 @app.on_event("startup")
 def on_startup():
     print("INFO: Сервер запущен. Проверка базы знаний...")
-    create_users_table() # Создаем таблицу пользователей, если ее нет
+    create_users_table()
 
 # --- Аутентификация для админ-панели "Николай" ---
-# Эту функцию мы пока оставим, но не будем использовать в @Depends для отладки
 def get_current_admin_username(credentials: HTTPBasicCredentials = Depends(security)):
     correct_username = secrets.compare_digest(credentials.username, ADMIN_USERNAME)
     correct_password = secrets.compare_digest(credentials.password, ADMIN_PASSWORD)
@@ -227,7 +243,7 @@ def get_ai_response(model_name: str, system_prompt_content: str, user_query: str
 # --- Админ-панель "Николай" (http://your_ip/) ---
 # УБРАЛИ Depends(get_current_admin_username) для отладки
 @app.get("/", response_class=HTMLResponse)
-async def read_admin_ui(request: Request): # <-- ИЗМЕНЕНО
+async def read_admin_ui(request: Request):
     default_models = ["o4-mini-2025-04-16", "gemini-2.5-pro"]
     try:
         with open(MODELS_LIST_FILE, "r") as f: models_list = [line.strip() for line in f]
@@ -263,21 +279,21 @@ async def read_admin_ui(request: Request): # <-- ИЗМЕНЕНО
 
 # УБРАЛИ Depends(get_current_admin_username) для отладки
 @app.get("/api/status")
-async def get_status(): # <-- ИЗМЕНЕНО
+async def get_status():
     try: result = subprocess.run(["systemctl", "is-active", "bitrix-gpt.service"], capture_output=True, text=True); status = result.stdout.strip()
     except FileNotFoundError: status = "failed"
     return {"status": status}
 
 # УБРАЛИ Depends(get_current_admin_username) для отладки
 @app.get("/api/logs")
-async def get_logs(): # <-- ИЗМЕНЕНО
+async def get_logs():
     try: result = subprocess.run(["journalctl", "-u", "bitrix-gpt.service", "--since", "5 minutes ago", "--no-pager"], capture_output=True, text=True); logs = result.stdout
     except FileNotFoundError: logs = "Не удалось загрузить логи."
     return {"logs": logs}
 
 # УБРАЛИ Depends(get_current_admin_username) для отладки
 @app.get("/api/settings")
-async def get_settings(): # <-- ИЗМЕНЕНО
+async def get_settings():
     default_models = ["o4-mini-2025-04-16", "gemini-2.5-pro"]
     try:
         with open(MODELS_LIST_FILE, "r") as f: models_list = [line.strip() for line in f]
@@ -304,7 +320,7 @@ async def save_settings(
     model: str = Form(...),
     prompt: str = Form(...),
     use_rag: bool = Form(False)
-): # <-- ИЗМЕНЕНО
+):
     global USE_RAG
     
     with open(CURRENT_MODEL_FILE, "w") as f: f.write(model)
@@ -317,7 +333,7 @@ async def save_settings(
 
 # УБРАЛИ Depends(get_current_admin_username) для отладки
 @app.post("/api/chat")
-async def handle_chat(chat_request: ChatRequest): # <-- ИЗМЕНЕНО
+async def handle_chat(chat_request: ChatRequest):
     try:
         with open(PROMPT_NIKOLAI_FILE, "r") as f: system_prompt = f.read().strip()
         with open(CURRENT_MODEL_FILE, "r") as f: model_name = f.read().strip()
@@ -331,7 +347,7 @@ async def handle_chat(chat_request: ChatRequest): # <-- ИЗМЕНЕНО
 
 # УБРАЛИ Depends(get_current_admin_username) для отладки
 @app.post("/api/upload-document")
-async def upload_document(file: UploadFile = File(...)): # <-- ИЗМЕНЕНО
+async def upload_document(file: UploadFile = File(...)):
     file_path = os.path.join(DOCS_DIR, file.filename)
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
@@ -340,13 +356,13 @@ async def upload_document(file: UploadFile = File(...)): # <-- ИЗМЕНЕНО
 
 # УБРАЛИ Depends(get_current_admin_username) для отладки
 @app.get("/api/documents")
-async def get_documents(): # <-- ИЗМЕНЕНО
+async def get_documents():
     files = [f for f in os.listdir(DOCS_DIR) if os.path.isfile(os.path.join(DOCS_DIR, f))]
     return JSONResponse(content={"documents": files})
 
 # УБРАЛИ Depends(get_current_admin_username) для отладки
 @app.delete("/api/documents/{filename}")
-async def delete_document(filename: str): # <-- ИЗМЕНЕНО
+async def delete_document(filename: str):
     file_path = os.path.join(DOCS_DIR, filename)
     if os.path.exists(file_path):
         os.remove(file_path)
@@ -357,7 +373,7 @@ async def delete_document(filename: str): # <-- ИЗМЕНЕНО
 
 # УБРАЛИ Depends(get_current_admin_username) для отладки
 @app.get("/api/users", response_class=JSONResponse)
-async def get_users(): # <-- ИЗМЕНЕНО
+async def get_users():
     conn = get_db_connection()
     users = conn.execute("SELECT id, username FROM users").fetchall()
     conn.close()
@@ -365,7 +381,7 @@ async def get_users(): # <-- ИЗМЕНЕНО
 
 # УБРАЛИ Depends(get_current_admin_username) для отладки
 @app.post("/api/users", response_class=JSONResponse)
-async def add_user(user_data: UserCreate): # <-- ИЗМЕНЕНО
+async def add_user(user_data: UserCreate):
     if not user_data.username or not user_data.password:
         raise HTTPException(status_code=400, detail="Логин и пароль не могут быть пустыми.")
     if create_user(user_data.username, user_data.password):
@@ -375,7 +391,7 @@ async def add_user(user_data: UserCreate): # <-- ИЗМЕНЕНО
 
 # УБРАЛИ Depends(get_current_admin_username) для отладки
 @app.put("/api/users/{user_id}", response_class=JSONResponse)
-async def update_password(user_id: int, user_data: UserUpdatePassword): # <-- ИЗМЕНЕНО
+async def update_password(user_id: int, user_data: UserUpdatePassword):
     if not user_data.new_password:
         raise HTTPException(status_code=400, detail="Новый пароль не может быть пустым.")
     update_user_password(user_id, user_data.new_password)
@@ -383,7 +399,7 @@ async def update_password(user_id: int, user_data: UserUpdatePassword): # <-- И
 
 # УБРАЛИ Depends(get_current_admin_username) для отладки
 @app.delete("/api/users/{user_id}", response_class=JSONResponse)
-async def remove_user(user_id: int): # <-- ИЗМЕНЕНО
+async def remove_user(user_id: int):
     delete_user(user_id)
     return {"message": f"Пользователь ID {user_id} успешно удален."}
 
