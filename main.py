@@ -259,6 +259,7 @@ def get_ai_response(model_name: str, system_prompt_content: str, user_query: str
         print(f"INFO: Используется Gemini API для модели {model_name}")
         if not GEMINI_API_KEY: raise ValueError("GEMINI_API_KEY не установлен.")
         model = genai.GenerativeModel(model_name, system_instruction=final_system_prompt)
+        # Для Gemini история и новый запрос передаются по-разному
         gemini_history = [{"role": "user" if msg["role"] == "user" else "model", "parts": [msg["content"]]} for msg in chat_history or []]
         chat_session = model.start_chat(history=gemini_history)
         response = chat_session.send_message(user_query)
@@ -583,6 +584,7 @@ async def get_chat_messages(chat_id: int, user: dict = Depends(get_current_mossa
     conn.close()
     return {"messages": [{"role": m["role"], "content": m["content"]} for m in messages]}
 
+# ИСПРАВЛЕННЫЙ API: Основная логика чата
 @app.post("/mossaassistant/api/chat", response_class=JSONResponse)
 async def mossaassistant_handle_chat(
     chat_request: MossaChatRequest,
@@ -598,47 +600,55 @@ async def mossaassistant_handle_chat(
     conn = get_db_connection()
     current_chat_id = chat_request.chat_id
     is_new_chat = False
+    chat_history = []
 
-    if not current_chat_id:
-        is_new_chat = True
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO chats (user_id, title) VALUES (?, ?)",
-            (user["id"], "Новый чат...")
-        )
-        conn.commit()
-        current_chat_id = cursor.lastrowid
-        background_tasks.add_task(generate_chat_title, current_chat_id, chat_request.user_message)
-    else:
+    if current_chat_id:
+        # Проверяем, что чат принадлежит пользователю
         chat_owner = conn.execute("SELECT user_id FROM chats WHERE id = ?", (current_chat_id,)).fetchone()
         if not chat_owner or chat_owner["user_id"] != user["id"]:
             conn.close()
             raise HTTPException(status_code=404, detail="Чат не найден или у вас нет к нему доступа")
-
-    conn.execute(
-        "INSERT INTO messages (chat_id, role, content) VALUES (?, ?, ?)",
-        (current_chat_id, "user", chat_request.user_message)
-    )
-    conn.commit()
-
-    history_rows = conn.execute(
-        "SELECT role, content FROM messages WHERE chat_id = ? ORDER BY timestamp ASC",
-        (current_chat_id,)
-    ).fetchall()
-    chat_history = [{"role": row["role"], "content": row["content"]} for row in history_rows]
-    conn.close()
-
+        
+        # Получаем историю для контекста
+        history_rows = conn.execute(
+            "SELECT role, content FROM messages WHERE chat_id = ? ORDER BY timestamp ASC",
+            (current_chat_id,)
+        ).fetchall()
+        chat_history = [{"role": row["role"], "content": row["content"]} for row in history_rows]
+    
     try:
-        ai_response_text = get_ai_response(model_name, system_prompt, "", chat_history=chat_history)
-        conn = get_db_connection()
+        # Получаем ответ от ИИ
+        ai_response_text = get_ai_response(model_name, system_prompt, chat_request.user_message, chat_history=chat_history)
+        
+        # Если это новый чат, создаем его
+        if not current_chat_id:
+            is_new_chat = True
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO chats (user_id, title) VALUES (?, ?)",
+                (user["id"], "Новый чат...")
+            )
+            conn.commit()
+            current_chat_id = cursor.lastrowid
+            background_tasks.add_task(generate_chat_title, current_chat_id, chat_request.user_message)
+
+        # Сохраняем оба сообщения
         conn.execute(
-            "INSERT INTO messages (chat_id, role, content) VALUES (?, ?, ?)",
-            (current_chat_id, "ai", ai_response_text)
+            "INSERT INTO messages (chat_id, role, content) VALUES (?, 'user', ?)",
+            (current_chat_id, chat_request.user_message)
+        )
+        conn.execute(
+            "INSERT INTO messages (chat_id, role, content) VALUES (?, 'ai', ?)",
+            (current_chat_id, ai_response_text)
         )
         conn.commit()
-        conn.close()
+
     except Exception as e:
+        conn.close()
+        print(f"ERROR: Ошибка при обработке чата: {e}")
         raise HTTPException(status_code=500, detail=f"Ошибка при обращении к ИИ: {e}")
+    finally:
+        conn.close()
 
     return {"ai_response": ai_response_text, "chat_id": current_chat_id, "is_new_chat": is_new_chat}
 
