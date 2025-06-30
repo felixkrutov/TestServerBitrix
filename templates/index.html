@@ -342,7 +342,6 @@
         const content = newChangelogEntryTextarea.value.trim();
         if (!content) return;
         try {
-            // ИСПРАВЛЕНИЕ: Отправляем JSON вместо FormData
             const response = await fetch('/api/changelog', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
