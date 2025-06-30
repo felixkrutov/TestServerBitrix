@@ -162,7 +162,7 @@ def initialize_database():
         CREATE TABLE IF NOT EXISTS messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             chat_id INTEGER NOT NULL,
-            role TEXT NOT NULL, -- 'user' or 'ai'
+            role TEXT NOT NULL,
             content TEXT NOT NULL,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (chat_id) REFERENCES chats (id) ON DELETE CASCADE
@@ -259,7 +259,6 @@ def get_ai_response(model_name: str, system_prompt_content: str, user_query: str
         print(f"INFO: Используется Gemini API для модели {model_name}")
         if not GEMINI_API_KEY: raise ValueError("GEMINI_API_KEY не установлен.")
         model = genai.GenerativeModel(model_name, system_instruction=final_system_prompt)
-        # Для Gemini история и новый запрос передаются по-разному
         gemini_history = [{"role": "user" if msg["role"] == "user" else "model", "parts": [msg["content"]]} for msg in chat_history or []]
         chat_session = model.start_chat(history=gemini_history)
         response = chat_session.send_message(user_query)
@@ -584,7 +583,6 @@ async def get_chat_messages(chat_id: int, user: dict = Depends(get_current_mossa
     conn.close()
     return {"messages": [{"role": m["role"], "content": m["content"]} for m in messages]}
 
-# ИСПРАВЛЕННЫЙ API: Основная логика чата
 @app.post("/mossaassistant/api/chat", response_class=JSONResponse)
 async def mossaassistant_handle_chat(
     chat_request: MossaChatRequest,
@@ -603,13 +601,11 @@ async def mossaassistant_handle_chat(
     chat_history = []
 
     if current_chat_id:
-        # Проверяем, что чат принадлежит пользователю
         chat_owner = conn.execute("SELECT user_id FROM chats WHERE id = ?", (current_chat_id,)).fetchone()
         if not chat_owner or chat_owner["user_id"] != user["id"]:
             conn.close()
             raise HTTPException(status_code=404, detail="Чат не найден или у вас нет к нему доступа")
         
-        # Получаем историю для контекста
         history_rows = conn.execute(
             "SELECT role, content FROM messages WHERE chat_id = ? ORDER BY timestamp ASC",
             (current_chat_id,)
@@ -617,10 +613,8 @@ async def mossaassistant_handle_chat(
         chat_history = [{"role": row["role"], "content": row["content"]} for row in history_rows]
     
     try:
-        # Получаем ответ от ИИ
         ai_response_text = get_ai_response(model_name, system_prompt, chat_request.user_message, chat_history=chat_history)
         
-        # Если это новый чат, создаем его
         if not current_chat_id:
             is_new_chat = True
             cursor = conn.cursor()
@@ -632,14 +626,13 @@ async def mossaassistant_handle_chat(
             current_chat_id = cursor.lastrowid
             background_tasks.add_task(generate_chat_title, current_chat_id, chat_request.user_message)
 
-        # Сохраняем оба сообщения
         conn.execute(
-            "INSERT INTO messages (chat_id, role, content) VALUES (?, 'user', ?)",
-            (current_chat_id, chat_request.user_message)
+            "INSERT INTO messages (chat_id, role, content) VALUES (?, ?, ?)",
+            (current_chat_id, 'user', chat_request.user_message)
         )
         conn.execute(
-            "INSERT INTO messages (chat_id, role, content) VALUES (?, 'ai', ?)",
-            (current_chat_id, ai_response_text)
+            "INSERT INTO messages (chat_id, role, content) VALUES (?, ?, ?)",
+            (current_chat_id, 'ai', ai_response_text)
         )
         conn.commit()
 
