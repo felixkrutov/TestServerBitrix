@@ -309,7 +309,7 @@
             return;
         }
         entries.forEach(entry => {
-            const date = new Date(entry.created_at).toLocaleString('ru-RU');
+            const date = new Date(entry.created_at).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' });
             const entryEl = document.createElement('div');
             entryEl.className = 'changelog-entry';
             entryEl.dataset.id = entry.id;
