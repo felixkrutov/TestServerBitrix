@@ -49,6 +49,14 @@
         .changelog-content { white-space: pre-wrap; color: #fff; }
         .changelog-actions button { background: none; border: none; color: #adb5bd; }
         .changelog-actions button:hover { color: #fff; }
+        /* Стили для режима редактирования записи журнала */
+        .changelog-content[contenteditable="true"] {
+            background-color: #2c3034;
+            border: 1px solid #86b7fe;
+            border-radius: 0.25rem;
+            padding: 0.5rem;
+            outline: none;
+        }
     </style>
 </head>
 <body>
@@ -301,6 +309,7 @@
     const changelogListEl = document.getElementById('changelog-list');
     const addChangelogForm = document.getElementById('addChangelogForm');
     const newChangelogEntryTextarea = document.getElementById('new-changelog-entry');
+    let isEditingChangelog = false;
 
     const renderChangelog = (entries) => {
         changelogListEl.innerHTML = '';
@@ -355,6 +364,7 @@
     });
 
     changelogListEl.addEventListener('click', async (e) => {
+        if (isEditingChangelog) return;
         const entryEl = e.target.closest('.changelog-entry');
         if (!entryEl) return;
         const entryId = entryEl.dataset.id;
@@ -370,10 +380,21 @@
         }
 
         if (e.target.closest('.edit-changelog-btn')) {
+            isEditingChangelog = true;
             const contentEl = entryEl.querySelector('.changelog-content');
-            const currentContent = contentEl.innerText;
-            const newContent = prompt('Отредактируйте запись:', currentContent);
-            if (newContent && newContent.trim() !== currentContent) {
+            const actionsEl = entryEl.querySelector('.changelog-actions');
+            const originalContentHTML = contentEl.innerHTML;
+            
+            contentEl.setAttribute('contenteditable', 'true');
+            contentEl.focus();
+            
+            actionsEl.innerHTML = `
+                <button class="save-changelog-btn" title="Сохранить"><i class="bi bi-check-lg"></i></button>
+                <button class="cancel-changelog-btn" title="Отмена"><i class="bi bi-x-lg"></i></button>
+            `;
+
+            const handleSave = async () => {
+                const newContent = contentEl.innerText;
                 try {
                     const response = await fetch(`/api/changelog/${entryId}`, {
                         method: 'PUT',
@@ -383,7 +404,20 @@
                     if (response.ok) loadChangelog();
                     else throw new Error('Ошибка обновления');
                 } catch (error) { alert(error.message); }
-            }
+            };
+
+            const handleCancel = () => {
+                contentEl.innerHTML = originalContentHTML;
+                contentEl.setAttribute('contenteditable', 'false');
+                actionsEl.innerHTML = `
+                    <button class="edit-changelog-btn" title="Редактировать"><i class="bi bi-pencil"></i></button>
+                    <button class="delete-changelog-btn" title="Удалить"><i class="bi bi-trash"></i></button>
+                `;
+                isEditingChangelog = false;
+            };
+
+            actionsEl.querySelector('.save-changelog-btn').onclick = handleSave;
+            actionsEl.querySelector('.cancel-changelog-btn').onclick = handleCancel;
         }
     });
 
