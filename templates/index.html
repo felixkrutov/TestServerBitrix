@@ -3,15 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Панель управления "Николай"</title>
+    <title>Панель управления</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
     <style>
         body { background-color: #212529; color: #fff; }
-        .container { max-width: 1140px; }
-        /* ИЗМЕНЕНО: Теперь все эти элементы будут чисто белыми */
+        .container-fluid { max-width: 1600px; }
         h1, h2, h3, h4, h5, h6, p, label, .card-header, .nav-link { color: #fff !important; } 
-        .card { background-color: #343a40; border-color: #495057; }
+        .card { background-color: #343a40; border-color: #495057; height: 100%; }
         .card-header { background-color: #495057; border-bottom: 1px solid #495057; }
         .form-control, .form-select { background-color: #495057; color: #fff; border-color: #6c757d; }
         .form-control::placeholder { color: #ccc; }
@@ -20,147 +19,177 @@
         .status-ok { background-color: #198754; }
         .status-fail { background-color: #dc3545; }
         #logs { background-color: #1a1a1a; color: #f8f9fa; font-family: monospace; white-space: pre-wrap; height: 400px; overflow-y: scroll; border: 1px solid #495057; }
-        
-        /* Стили для вкладок */
-        .nav-tabs { border-bottom: none; } /* Убираем белую полоску */
+        .nav-tabs { border-bottom: none; }
         .nav-tabs .nav-link { border-color: #495057; }
         .nav-tabs .nav-link.active { background-color: #495057; border-color: #495057; }
-        .tab-content > .tab-pane .card-body { min-height: 650px; } /* Одинаковая высота для всех вкладок */
-
-        /* Стили для чата */
-        #chat-history { background-color: #2c3034; height: 500px; overflow-y: scroll; border: 1px solid #495057; padding: 10px; margin-bottom: 1rem; }
+        .tab-content > .tab-pane .card-body { min-height: 550px; }
+        .item-list-item { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; border-bottom: 1px solid #495057; }
+        .upload-area { display: flex; gap: 1rem; align-items: center; padding: 15px; border: 1px solid #6c757d; border-radius: 0.25rem; }
+        .file-name-display { background-color: #495057; padding: 0.375rem 0.75rem; border-radius: 0.25rem; border: 1px solid #6c757d; flex-grow: 1; text-align: left; color: #ccc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        #chat-history { background-color: #2c3034; height: 400px; overflow-y: scroll; border: 1px solid #495057; padding: 10px; margin-bottom: 1rem; }
         .message-block { display: flex; flex-direction: column; margin-bottom: 0.5rem; max-width: 80%; }
         .message-content { padding: 0.5rem 1rem; border-radius: 0.5rem; word-wrap: break-word; }
-        .message-time { font-size: 0.75rem; color: #adb5bd; margin-top: 4px; }
         .user-message { align-self: flex-end; }
-        .user-message .message-content { background-color: #0d6efd; text-align: left; }
-        .user-message .message-time { text-align: right; }
+        .user-message .message-content { background-color: #0d6efd; }
         .ai-message { align-self: flex-start; }
-        .ai-message .message-content { background-color: #495057; text-align: left; white-space: pre-wrap; }
-        .chat-header { display: flex; justify-content: space-between; align-items: center; }
-
-        /* Стили для Базы Знаний и Управления пользователями */
-        .item-list-item { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; border-bottom: 1px solid #495057; }
-        .item-list-item span { color: #f8f9fa; }
-        .upload-area { 
-            display: flex; 
-            gap: 1rem; 
-            align-items: center; 
-            padding: 15px;
-            border: 1px solid #6c757d;
-            border-radius: 0.25rem;
-            transition: border-color 0.2s ease-in-out, background-color 0.2s ease-in-out;
-        }
-        .upload-area.drag-over {
-            border: 2px dashed #0d6efd;
-            background-color: #3a4047;
-        }
-        .upload-area .btn-upload { flex-shrink: 0; }
-        .file-name-display { background-color: #495057; padding: 0.375rem 0.75rem; border-radius: 0.25rem; border: 1px solid #6c757d; flex-grow: 1; text-align: left; color: #ccc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        #uploadButton:disabled { background-color: #6c757d; cursor: not-allowed; }
-        .pagination { justify-content: center; }
+        .ai-message .message-content { background-color: #495057; white-space: pre-wrap; }
     </style>
 </head>
 <body>
-    <div class="container my-4">
-        <h1 class="mb-4">Панель управления "Николай"</h1>
+    <div class="container-fluid my-4">
+        <h1 class="mb-4">Панель управления</h1>
 
         <div class="card mb-4">
             <div class="card-header">Статус и Логи</div>
             <div class="card-body">
                 <p>Статус сервиса: <span id="status-indicator" class="status-dot"></span> <span id="status-text">Загрузка...</span></p>
                 <button class="btn btn-primary mb-2" onclick="fetchLogs()">Обновить логи</button>
-                <div id="logs" class="p-2 rounded">Загрузка логов...</div>
+                <div id="logs" class="p-2 rounded">{{ logs }}</div>
             </div>
         </div>
 
-        <ul class="nav nav-tabs" id="myTab" role="tablist">
-            <li class="nav-item" role="presentation"><button class="nav-link active" id="rag-tab" data-bs-toggle="tab" data-bs-target="#rag-tab-pane" type="button">База Знаний (RAG)</button></li>
-            <li class="nav-item" role="presentation"><button class="nav-link" id="chat-tab" data-bs-toggle="tab" data-bs-target="#chat-tab-pane" type="button">Тестовый чат</button></li>
-            <li class="nav-item" role="presentation"><button class="nav-link" id="users-tab" data-bs-toggle="tab" data-bs-target="#users-tab-pane" type="button">Управление пользователями</button></li>
-            <li class="nav-item" role="presentation"><button class="nav-link" id="settings-tab" data-bs-toggle="tab" data-bs-target="#settings-tab-pane" type="button">Настройки</button></li>
-        </ul>
-
-        <div class="tab-content" id="myTabContent">
-            <div class="tab-pane fade show active" id="rag-tab-pane" role="tabpanel">
-                <div class="card card-body border-top-0 rounded-bottom">
-                    <h5>Загрузить новый документ</h5>
-                    <form id="uploadForm" class="mb-3">
-                        <div class="upload-area">
-                            <label for="documentFile" class="btn btn-secondary btn-upload">Выберите файл</label>
-                            <span id="fileNameDisplay" class="file-name-display">Файл не выбран</span>
-                            <button class="btn btn-success" type="submit" id="uploadButton" disabled>Загрузить</button>
+        <div class="card mb-4">
+            <div class="card-header">Общая База Знаний (RAG)</div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h5>Загрузить новый документ</h5>
+                        <form id="uploadForm" class="mb-3">
+                            <div class="upload-area">
+                                <label for="documentFile" class="btn btn-secondary">Выберите файл</label>
+                                <span id="fileNameDisplay" class="file-name-display">Файл не выбран</span>
+                                <button class="btn btn-success" type="submit" id="uploadButton" disabled>Загрузить</button>
+                            </div>
+                            <input type="file" id="documentFile" class="d-none">
+                        </form>
+                        <div id="uploadStatus"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <h5 class="mt-4 mt-md-0">Загруженные документы</h5>
+                        <div id="documentList">
+                            {% for file in uploaded_files %}
+                            <div class="item-list-item">
+                                <span>{{ file }}</span>
+                                <button class="btn btn-danger btn-sm" onclick="deleteDocument('{{ file }}')">Удалить</button>
+                            </div>
+                            {% else %}
+                            <p>Документы не загружены.</p>
+                            {% endfor %}
                         </div>
-                        <input type="file" id="documentFile" class="d-none">
-                    </form>
-                    <div id="uploadStatus"></div>
-                    <h5 class="mt-4">Загруженные документы</h5>
-                    <div id="documentList">Загрузка списка...</div>
-                    <nav id="pagination-wrapper" class="mt-4"></nav>
-                </div>
-            </div>
-
-            <div class="tab-pane fade" id="chat-tab-pane" role="tabpanel">
-                <div class="card card-body border-top-0 rounded-bottom">
-                    <div class="chat-header mb-2">
-                        <h5>Тестовый чат для отладки промптов</h5>
-                        <button class="btn btn-sm btn-outline-light" id="clearChatBtn" title="Очистить чат"><i class="bi bi-arrow-clockwise"></i> Очистить</button>
-                    </div>
-                    <div id="chat-history"></div>
-                    <div class="input-group">
-                        <textarea class="form-control" id="user-input" placeholder="Введите ваш запрос здесь... (Shift+Enter для переноса строки)" rows="3"></textarea>
-                        <button class="btn btn-primary" id="send-btn">Отправить</button>
-                    </div>
-                    <div id="loading-indicator" class="mt-2" style="display: none;">
-                        <div class="spinner-border spinner-border-sm" role="status"></div>
-                        <span>Думаю...</span>
                     </div>
                 </div>
             </div>
+        </div>
 
-            <div class="tab-pane fade" id="users-tab-pane" role="tabpanel">
-                <div class="card card-body border-top-0 rounded-bottom">
-                    <h5>Создать нового пользователя "Мосса Ассистент"</h5>
-                    <form id="createUserForm" class="mb-3">
-                        <div class="row g-3">
-                            <div class="col-md">
-                                <input type="text" class="form-control" id="newUsername" placeholder="Логин пользователя" required>
+        <div class="row">
+            <!-- КОЛОНКА ДЛЯ НИКОЛАЯ (БИТРИКС) -->
+            <div class="col-lg-6 mb-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="mb-0">Настройки для Битрикс ("Николай")</h3>
+                    </div>
+                    <div class="card-body p-0">
+                        <ul class="nav nav-tabs" id="nikolaiTab" role="tablist">
+                            <li class="nav-item" role="presentation"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#nikolai-chat-pane" type="button">Тестовый чат</button></li>
+                            <li class="nav-item" role="presentation"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#nikolai-settings-pane" type="button">Настройки</button></li>
+                        </ul>
+                        <div class="tab-content">
+                            <div class="tab-pane fade show active p-3" id="nikolai-chat-pane">
+                                <div id="chat-history"></div>
+                                <div class="input-group">
+                                    <textarea class="form-control" id="user-input" placeholder="Тестовый запрос для Николая..." rows="3"></textarea>
+                                    <button class="btn btn-primary" id="send-btn">Отправить</button>
+                                </div>
+                                <div id="loading-indicator" class="mt-2" style="display: none;">
+                                    <div class="spinner-border spinner-border-sm" role="status"></div>
+                                    <span>Думаю...</span>
+                                </div>
                             </div>
-                            <div class="col-md">
-                                <input type="password" class="form-control" id="newPassword" placeholder="Пароль" required>
-                            </div>
-                            <div class="col-md-auto">
-                                <button class="btn btn-success" type="submit">Создать аккаунт</button>
+                            <div class="tab-pane fade p-3" id="nikolai-settings-pane">
+                                <form id="nikolaiSettingsForm">
+                                    <div class="mb-3">
+                                        <label for="model_nikolai" class="form-label">Выбрать модель</label>
+                                        <select class="form-select" id="model_nikolai" name="model">
+                                            {% for model in models %}
+                                            <option value="{{ model }}" {% if model == current_model_nikolai %}selected{% endif %}>{{ model }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="prompt_nikolai" class="form-label">Системный промпт</label>
+                                        <textarea class="form-control" id="prompt_nikolai" name="prompt" rows="10">{{ system_prompt_nikolai }}</textarea>
+                                    </div>
+                                    <div class="form-check form-switch mb-3">
+                                        <input type="checkbox" class="form-check-input" id="use_rag_nikolai" name="use_rag_nikolai" {% if use_rag_nikolai %}checked{% endif %}>
+                                        <label class="form-check-label" for="use_rag_nikolai">Использовать Базу Знаний (RAG)</label>
+                                    </div>
+                                    <button type="submit" class="btn btn-success">Сохранить и Перезапустить</button>
+                                    <div id="nikolaiSaveStatus" class="mt-3"></div>
+                                </form>
                             </div>
                         </div>
-                    </form>
-                    <div id="userStatus"></div>
-                    <h5 class="mt-4">Существующие пользователи</h5>
-                    <div id="userList">Загрузка списка...</div>
+                    </div>
                 </div>
             </div>
 
-            <div class="tab-pane fade" id="settings-tab-pane" role="tabpanel">
-                <div class="card card-body border-top-0 rounded-bottom">
-                    <form id="settingsForm">
-                        <div class="mb-3">
-                            <label for="model" class="form-label">Выбрать модель</label>
-                            <select class="form-select" id="model" name="model"></select>
+            <!-- КОЛОНКА ДЛЯ МОССА АССИСТЕНТА -->
+            <div class="col-lg-6 mb-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="mb-0">Настройки для Чата Сотрудников</h3>
+                    </div>
+                    <div class="card-body p-0">
+                        <ul class="nav nav-tabs" id="mossaTab" role="tablist">
+                            <li class="nav-item" role="presentation"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#mossa-users-pane" type="button">Управление пользователями</button></li>
+                            <li class="nav-item" role="presentation"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#mossa-settings-pane" type="button">Настройки</button></li>
+                        </ul>
+                        <div class="tab-content">
+                            <div class="tab-pane fade show active p-3" id="mossa-users-pane">
+                                <h5>Создать нового пользователя</h5>
+                                <form id="createUserForm" class="mb-3">
+                                    <div class="row g-3">
+                                        <div class="col-md"><input type="text" class="form-control" id="newUsername" placeholder="Логин" required></div>
+                                        <div class="col-md"><input type="password" class="form-control" id="newPassword" placeholder="Пароль" required></div>
+                                        <div class="col-md-auto"><button class="btn btn-success" type="submit">Создать</button></div>
+                                    </div>
+                                </form>
+                                <div id="userStatus"></div>
+                                <h5 class="mt-4">Существующие пользователи</h5>
+                                <div id="userList">
+                                    {% for user in users_list %}
+                                    <div class="item-list-item">
+                                        <span>{{ user.username }} (ID: {{ user.id }})</span>
+                                        <button class="btn btn-danger btn-sm" onclick="deleteUser({{ user.id }}, '{{ user.username }}')">Удалить</button>
+                                    </div>
+                                    {% else %}
+                                    <p>Пользователи не созданы.</p>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                            <div class="tab-pane fade p-3" id="mossa-settings-pane">
+                                <form id="mossaSettingsForm">
+                                    <div class="mb-3">
+                                        <label for="model_mossa" class="form-label">Выбрать модель</label>
+                                        <select class="form-select" id="model_mossa" name="model">
+                                            {% for model in models %}
+                                            <option value="{{ model }}" {% if model == current_model_mossa %}selected{% endif %}>{{ model }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="prompt_mossa" class="form-label">Системный промпт</label>
+                                        <textarea class="form-control" id="prompt_mossa" name="prompt" rows="10">{{ system_prompt_mossa }}</textarea>
+                                    </div>
+                                    <div class="form-check form-switch mb-3">
+                                        <input type="checkbox" class="form-check-input" id="use_rag_mossa" name="use_rag_mossa" {% if use_rag_mossa %}checked{% endif %}>
+                                        <label class="form-check-label" for="use_rag_mossa">Использовать Базу Знаний (RAG)</label>
+                                    </div>
+                                    <button type="submit" class="btn btn-success">Сохранить и Перезапустить</button>
+                                    <div id="mossaSaveStatus" class="mt-3"></div>
+                                </form>
+                            </div>
                         </div>
-                        <div class="mb-3">
-                            <label for="prompt" class="form-label">Системный промпт</label>
-                            <textarea class="form-control" id="prompt" name="prompt" rows="15"></textarea>
-                        </div>
-                        
-                        <div class="form-group mb-3 form-check form-switch">
-                            <input type="checkbox" class="form-check-input" id="use_rag_toggle" name="use_rag" value="true">
-                            <label class="form-check-label" for="use_rag_toggle">Использовать Базу Знаний (RAG)</label>
-                            <small class="form-text text-light">Нажмите кнопку сохранить чтобы внести изменения.</small>
-                        </div>
-
-                        <button type="submit" class="btn btn-success">Сохранить и Перезапустить</button>
-                    </form>
-                    <div id="saveStatus" class="mt-3"></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -168,233 +197,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-    // --- Глобальные переменные для пагинации ---
-    let allDocuments = [];
-    let currentPage = 1;
-    const itemsPerPage = 5;
-
-    // --- Логика для Базы Знаний ---
-    const uploadForm = document.getElementById('uploadForm');
-    const documentFile = document.getElementById('documentFile');
-    const uploadButton = document.getElementById('uploadButton');
-    const fileNameDisplay = document.getElementById('fileNameDisplay');
-    const uploadStatus = document.getElementById('uploadStatus');
-    const documentList = document.getElementById('documentList');
-    const paginationWrapper = document.getElementById('pagination-wrapper');
-    const uploadArea = document.querySelector('#uploadForm .upload-area');
-
-    documentFile.addEventListener('change', () => {
-        if (documentFile.files.length > 0) {
-            fileNameDisplay.textContent = documentFile.files[0].name;
-            fileNameDisplay.style.color = '#fff';
-            uploadButton.disabled = false;
-        } else {
-            fileNameDisplay.textContent = 'Файл не выбран';
-            fileNameDisplay.style.color = '#ccc';
-            uploadButton.disabled = true;
-        }
-    });
-
-    uploadArea.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        uploadArea.classList.add('drag-over');
-    });
-
-    uploadArea.addEventListener('dragleave', () => {
-        uploadArea.classList.remove('drag-over');
-    });
-
-    uploadArea.addEventListener('drop', (e) => {
-        e.preventDefault();
-        uploadArea.classList.remove('drag-over');
-        const files = e.dataTransfer.files;
-        if (files.length > 0) {
-            documentFile.files = files;
-            const event = new Event('change');
-            documentFile.dispatchEvent(event);
-            if (!uploadButton.disabled) {
-                uploadForm.dispatchEvent(new Event('submit', { cancelable: true }));
-            }
-        }
-    });
-
-    function displayDocuments(page) {
-        currentPage = page;
-        documentList.innerHTML = '';
-        paginationWrapper.innerHTML = '';
-
-        if (allDocuments.length === 0) {
-            documentList.innerHTML = '<p>Документы не загружены.</p>';
-            return;
-        }
-
-        const startIndex = (page - 1) * itemsPerPage;
-        const endIndex = startIndex + itemsPerPage;
-        const paginatedItems = allDocuments.slice(startIndex, endIndex);
-
-        paginatedItems.forEach(doc => {
-            const docElement = document.createElement('div');
-            docElement.className = 'item-list-item';
-            docElement.innerHTML = `<span>${doc}</span><button class="btn btn-danger btn-sm" onclick="deleteDocument('${doc}')">Удалить</button>`;
-            documentList.appendChild(docElement);
-        });
-
-        setupPagination();
-    }
-
-    function setupPagination() {
-        const pageCount = Math.ceil(allDocuments.length / itemsPerPage);
-        if (pageCount <= 1) return;
-
-        const ul = document.createElement('ul');
-        ul.className = 'pagination';
-
-        for (let i = 1; i <= pageCount; i++) {
-            const li = document.createElement('li');
-            li.className = 'page-item' + (i === currentPage ? ' active' : '');
-            const a = document.createElement('a');
-            a.className = 'page-link';
-            a.href = '#';
-            a.innerText = i;
-            a.addEventListener('click', (e) => {
-                e.preventDefault();
-                displayDocuments(i);
-            });
-            li.appendChild(a);
-            ul.appendChild(li);
-        }
-        paginationWrapper.appendChild(ul);
-    }
-
-    async function fetchDocuments() {
-        documentList.innerHTML = 'Обновление...';
-        try {
-            const response = await fetch('/api/documents');
-            const data = await response.json();
-            allDocuments = data.documents || [];
-            displayDocuments(1);
-        } catch (error) {
-            documentList.innerHTML = '<p class="text-danger">Ошибка загрузки списка документов.</p>';
-        }
-    }
-    
-    uploadForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        if (!documentFile.files[0]) { alert('Выберите файл для загрузки.'); return; }
-        const formData = new FormData();
-        formData.append('file', documentFile.files[0]);
-        uploadStatus.innerHTML = '<div class="alert alert-info">Загрузка и обработка файла...</div>';
-        try {
-            const response = await fetch('/api/upload-document', { method: 'POST', body: formData });
-            const result = await response.json();
-            if (response.ok) {
-                uploadStatus.innerHTML = `<div class="alert alert-success">${result.message}</div>`;
-                fetchDocuments();
-            } else { throw new Error(result.detail || 'Ошибка загрузки'); }
-        } catch (error) {
-            uploadStatus.innerHTML = `<div class="alert alert-danger">${error.message}</div>`;
-        }
-        documentFile.value = '';
-        fileNameDisplay.textContent = 'Файл не выбран';
-        fileNameDisplay.style.color = '#ccc';
-        uploadButton.disabled = true;
-        setTimeout(() => { uploadStatus.innerHTML = ''; }, 5000);
-    });
-    
-    async function deleteDocument(filename) {
-        if (!confirm(`Вы уверены, что хотите удалить файл "${filename}"?`)) return;
-        try {
-            const response = await fetch(`/api/documents/${filename}`, { method: 'DELETE' });
-            if (response.ok) {
-                alert(`Файл "${filename}" удален.`);
-                fetchDocuments();
-            } else { throw new Error('Ошибка удаления'); }
-        } catch (error) { alert(error.message); }
-    }
-
-    // --- Логика для Управления пользователями ---
-    const createUserForm = document.getElementById('createUserForm');
-    const userList = document.getElementById('userList');
-    const userStatus = document.getElementById('userStatus');
-
-    async function fetchUsers() {
-        userList.innerHTML = 'Обновление...';
-        try {
-            const response = await fetch('/api/users');
-            const data = await response.json();
-            userList.innerHTML = '';
-            if (data.users.length === 0) {
-                userList.innerHTML = '<p>Пользователи не созданы.</p>';
-            } else {
-                data.users.forEach(user => {
-                    const userElement = document.createElement('div');
-                    userElement.className = 'item-list-item';
-                    userElement.innerHTML = `<span>${user.username} (ID: ${user.id})</span><button class="btn btn-danger btn-sm" onclick="deleteUser(${user.id}, '${user.username}')">Удалить</button>`;
-                    userList.appendChild(userElement);
-                });
-            }
-        } catch (error) {
-            userList.innerHTML = '<p class="text-danger">Ошибка загрузки списка пользователей.</p>';
-        }
-    }
-
-    createUserForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const username = document.getElementById('newUsername').value;
-        const password = document.getElementById('newPassword').value;
-
-        userStatus.innerHTML = '<div class="alert alert-info">Создание пользователя...</div>';
-        try {
-            const response = await fetch('/api/users', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password })
-            });
-            const result = await response.json();
-            if (response.ok) {
-                userStatus.innerHTML = `<div class="alert alert-success">${result.message}</div>`;
-                fetchUsers();
-                document.getElementById('newUsername').value = '';
-                document.getElementById('newPassword').value = '';
-            } else {
-                throw new Error(result.detail || 'Ошибка создания пользователя');
-            }
-        } catch (error) {
-            userStatus.innerHTML = `<div class="alert alert-danger">${error.message}</div>`;
-        }
-        setTimeout(() => { userStatus.innerHTML = ''; }, 5000);
-    });
-
-    async function deleteUser(userId, username) {
-        if (!confirm(`Вы уверены, что хотите удалить пользователя "${username}"?`)) return;
-        try {
-            const response = await fetch(`/api/users/${userId}`, { method: 'DELETE' });
-            if (response.ok) {
-                alert(`Пользователь "${username}" удален.`);
-                fetchUsers();
-            } else {
-                throw new Error('Ошибка удаления пользователя');
-            }
-        } catch (error) {
-            alert(error.message);
-        }
-    }
-
-    // --- Остальная логика ---
-    const settingsForm = document.getElementById('settingsForm');
-    const saveStatus = document.getElementById('saveStatus');
-
-    settingsForm.addEventListener('submit', async function(e) {
-        e.preventDefault();
-        const formData = new FormData(this);
-        saveStatus.innerHTML = '<div class="alert alert-info">Сохраняю...</div>';
-        const response = await fetch('/api/settings', { method: 'POST', body: formData });
-        const result = await response.json();
-        if (result.status === 'ok') { saveStatus.innerHTML = `<div class="alert alert-success">Настройки сохранены! Сервис перезапускается.</div>`; }
-        else { saveStatus.innerHTML = `<div class="alert alert-danger">Ошибка сохранения.</div>`; }
-        setTimeout(() => { saveStatus.innerHTML = ''; }, 5000);
-    });
-
+    // --- Общая логика ---
     async function fetchStatus() {
         const response = await fetch('/api/status');
         const data = await response.json();
@@ -414,82 +217,145 @@
             logsContainer.scrollTop = logsContainer.scrollHeight;
         } catch (error) { logsContainer.textContent = 'Не удалось загрузить логи.'; }
     }
+
+    // --- Логика Базы Знаний (RAG) ---
+    const uploadForm = document.getElementById('uploadForm');
+    const documentFile = document.getElementById('documentFile');
+    const uploadButton = document.getElementById('uploadButton');
+    const fileNameDisplay = document.getElementById('fileNameDisplay');
     
-    async function fetchSettings() {
-        const response = await fetch('/api/settings');
-        const data = await response.json();
-        document.getElementById('prompt').value = data.prompt;
-        const modelSelect = document.getElementById('model');
-        modelSelect.innerHTML = '';
-        data.models_list.forEach(modelName => {
-            const option = document.createElement('option');
-            option.value = modelName;
-            option.textContent = modelName;
-            if (modelName === data.current_model) { option.selected = true; }
-            modelSelect.appendChild(option);
-        });
-        document.getElementById('use_rag_toggle').checked = data.use_rag;
+    documentFile.addEventListener('change', () => {
+        if (documentFile.files.length > 0) {
+            fileNameDisplay.textContent = documentFile.files[0].name;
+            uploadButton.disabled = false;
+        } else {
+            fileNameDisplay.textContent = 'Файл не выбран';
+            uploadButton.disabled = true;
+        }
+    });
+
+    uploadForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const formData = new FormData();
+        formData.append('file', documentFile.files[0]);
+        document.getElementById('uploadStatus').innerHTML = '<div class="alert alert-info">Загрузка и обработка...</div>';
+        try {
+            const response = await fetch('/api/upload-document', { method: 'POST', body: formData });
+            if (response.ok) {
+                alert('Файл успешно загружен!');
+                window.location.reload();
+            } else { throw new Error('Ошибка загрузки'); }
+        } catch (error) {
+            alert(error.message);
+        }
+    });
+
+    async function deleteDocument(filename) {
+        if (!confirm(`Вы уверены, что хотите удалить файл "${filename}"?`)) return;
+        try {
+            const response = await fetch(`/api/documents/${filename}`, { method: 'DELETE' });
+            if (response.ok) {
+                alert(`Файл "${filename}" удален.`);
+                window.location.reload();
+            } else { throw new Error('Ошибка удаления'); }
+        } catch (error) { alert(error.message); }
     }
 
-    window.onload = () => {
-        const sendBtn = document.getElementById('send-btn');
+    // --- Логика для Николая (Битрикс) ---
+    document.getElementById('nikolaiSettingsForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        // Убедимся, что флажок отправляется правильно
+        formData.set('use_rag_nikolai', document.getElementById('use_rag_nikolai').checked);
+        const statusEl = document.getElementById('nikolaiSaveStatus');
+        statusEl.innerHTML = '<div class="alert alert-info">Сохраняю...</div>';
+        const response = await fetch('/api/settings/nikolai', { method: 'POST', body: formData });
+        const result = await response.json();
+        if (result.status === 'ok') { statusEl.innerHTML = `<div class="alert alert-success">${result.message}</div>`; }
+        else { statusEl.innerHTML = `<div class="alert alert-danger">Ошибка сохранения.</div>`; }
+        setTimeout(() => { statusEl.innerHTML = ''; }, 5000);
+    });
+
+    document.getElementById('send-btn').addEventListener('click', async () => {
         const userInput = document.getElementById('user-input');
+        const message = userInput.value.trim();
+        if (!message) return;
+        
         const chatHistory = document.getElementById('chat-history');
-        const loadingIndicator = document.getElementById('loading-indicator');
-        const clearChatBtn = document.getElementById('clearChatBtn');
-
-        clearChatBtn.addEventListener('click', () => {
-            chatHistory.innerHTML = '';
-        });
-
-        function addMessageToHistory(message, sender) {
-            const time = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-            const messageBlock = document.createElement('div');
-            messageBlock.className = `message-block ${sender}-message`;
-            
-            const messageContent = document.createElement('div');
-            messageContent.className = 'message-content';
-            messageContent.textContent = message;
-
-            const messageTime = document.createElement('div');
-            messageTime.className = 'message-time';
-            messageTime.textContent = time;
-
-            messageBlock.appendChild(messageContent);
-            messageBlock.appendChild(messageTime);
-            chatHistory.appendChild(messageBlock);
+        const userMsgBlock = document.createElement('div');
+        userMsgBlock.className = 'message-block user-message';
+        userMsgBlock.innerHTML = `<div class="message-content">${message}</div>`;
+        chatHistory.appendChild(userMsgBlock);
+        userInput.value = '';
+        
+        document.getElementById('loading-indicator').style.display = 'block';
+        try {
+            const response = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_message: message }) });
+            const data = await response.json();
+            const aiMsgBlock = document.createElement('div');
+            aiMsgBlock.className = 'message-block ai-message';
+            aiMsgBlock.innerHTML = `<div class="message-content">${data.ai_response}</div>`;
+            chatHistory.appendChild(aiMsgBlock);
+        } catch (error) {
+            alert('Ошибка чата: ' + error);
+        } finally {
+            document.getElementById('loading-indicator').style.display = 'none';
             chatHistory.scrollTop = chatHistory.scrollHeight;
         }
-        
-        sendBtn.addEventListener('click', async () => {
-            const message = userInput.value.trim();
-            if (!message) return;
-            addMessageToHistory(message, 'user');
-            userInput.value = '';
-            loadingIndicator.style.display = 'block';
-            sendBtn.disabled = true;
-            try {
-                const response = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_message: message }) });
-                if (!response.ok) { const errorData = await response.json(); throw new Error(errorData.detail || `Ошибка сервера: ${response.statusText}`); }
-                const data = await response.json();
-                addMessageToHistory(data.ai_response, 'ai');
-            } catch (error) {
-                addMessageToHistory(`Ошибка: ${error.message}`, 'ai');
-            } finally {
-                loadingIndicator.style.display = 'none';
-                sendBtn.disabled = false;
-            }
-        });
-        userInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendBtn.click(); }
-        });
+    });
 
+    // --- Логика для Мосса Ассистента ---
+    document.getElementById('mossaSettingsForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        formData.set('use_rag_mossa', document.getElementById('use_rag_mossa').checked);
+        const statusEl = document.getElementById('mossaSaveStatus');
+        statusEl.innerHTML = '<div class="alert alert-info">Сохраняю...</div>';
+        const response = await fetch('/api/settings/mossa', { method: 'POST', body: formData });
+        const result = await response.json();
+        if (result.status === 'ok') { statusEl.innerHTML = `<div class="alert alert-success">${result.message}</div>`; }
+        else { statusEl.innerHTML = `<div class="alert alert-danger">Ошибка сохранения.</div>`; }
+        setTimeout(() => { statusEl.innerHTML = ''; }, 5000);
+    });
+
+    document.getElementById('createUserForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const username = document.getElementById('newUsername').value;
+        const password = document.getElementById('newPassword').value;
+        const statusEl = document.getElementById('userStatus');
+        statusEl.innerHTML = '<div class="alert alert-info">Создание...</div>';
+        try {
+            const response = await fetch('/api/users', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            const result = await response.json();
+            if (response.ok) {
+                alert(result.message);
+                window.location.reload();
+            } else { throw new Error(result.detail || 'Ошибка'); }
+        } catch (error) {
+            statusEl.innerHTML = `<div class="alert alert-danger">${error.message}</div>`;
+            setTimeout(() => { statusEl.innerHTML = ''; }, 5000);
+        }
+    });
+
+    async function deleteUser(userId, username) {
+        if (!confirm(`Вы уверены, что хотите удалить пользователя "${username}"?`)) return;
+        try {
+            const response = await fetch(`/api/users/${userId}`, { method: 'DELETE' });
+            if (response.ok) {
+                alert(`Пользователь "${username}" удален.`);
+                window.location.reload();
+            } else { throw new Error('Ошибка удаления'); }
+        } catch (error) { alert(error.message); }
+    }
+
+    // --- Инициализация при загрузке ---
+    window.onload = () => {
         fetchStatus();
-        fetchLogs();
-        fetchSettings();
-        fetchDocuments();
-        fetchUsers();
-        setInterval(fetchStatus, 5000);
+        setInterval(fetchStatus, 10000);
     };
 </script>
 </body>
