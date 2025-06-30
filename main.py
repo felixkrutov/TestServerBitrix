@@ -52,9 +52,8 @@ class UserCreate(BaseModel):
     username: str
     password: str
 
-class UserUpdatePassword(BaseModel):
-    user_id: int
-    new_password: str
+class ChangelogEntry(BaseModel):
+    content: str
 
 # --- Пути к файлам и папкам ---
 MODELS_LIST_FILE = "models_list.txt"
@@ -64,8 +63,6 @@ PROMPT_MOSSAASSISTANT_FILE = "prompt_mossaassistant.txt"
 CURRENT_MODEL_MOSSA_FILE = "current_model_mossa.txt"
 USE_RAG_NIKOLAI_FILE = "use_rag_nikolai.txt"
 USE_RAG_MOSSA_FILE = "use_rag_mossa.txt"
-# НОВЫЙ ФАЙЛ ДЛЯ ЖУРНАЛА ИЗМЕНЕНИЙ
-CHANGELOG_FILE = "changelog.txt"
 DOCS_DIR = "documents"
 DB_DIR = "chroma_db"
 USERS_DB_FILE = "users.db"
@@ -126,7 +123,7 @@ def save_rag_setting(file_path: str, value: bool):
     with open(file_path, "w") as f:
         f.write(str(value).lower())
 
-# --- Функции для работы с базой данных пользователей и чатов ---
+# --- Функции для работы с базой данных ---
 def get_db_connection():
     conn = sqlite3.connect(USERS_DB_FILE)
     conn.row_factory = sqlite3.Row
@@ -168,6 +165,13 @@ def initialize_database():
             content TEXT NOT NULL,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (chat_id) REFERENCES chats (id) ON DELETE CASCADE
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS changelog_entries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            content TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
     conn.commit()
@@ -283,12 +287,9 @@ async def read_admin_ui(request: Request, username: str = Depends(get_current_ad
     use_rag_nikolai = load_rag_setting(USE_RAG_NIKOLAI_FILE)
     use_rag_mossa = load_rag_setting(USE_RAG_MOSSA_FILE)
     
-    try:
-        with open(CHANGELOG_FILE, "r", encoding="utf-8") as f: changelog_content = f.read()
-    except FileNotFoundError: changelog_content = ""
-
     conn = get_db_connection()
     users_list = conn.execute("SELECT id, username FROM users").fetchall()
+    changelog_entries = conn.execute("SELECT * FROM changelog_entries ORDER BY created_at DESC").fetchall()
     conn.close()
     
     return templates.TemplateResponse("index.html", {
@@ -302,7 +303,7 @@ async def read_admin_ui(request: Request, username: str = Depends(get_current_ad
         "uploaded_files": uploaded_files,
         "use_rag_nikolai": use_rag_nikolai,
         "use_rag_mossa": use_rag_mossa,
-        "changelog_content": changelog_content,
+        "changelog_entries": changelog_entries,
         "users_list": [{"id": user["id"], "username": user["username"]} for user in users_list]
     })
 
@@ -334,15 +335,39 @@ async def save_mossa_settings(username: str = Depends(get_current_admin_username
     subprocess.run(["systemctl", "restart", "bitrix-gpt.service"])
     return {"status": "ok", "message": "Настройки для 'Мосса Ассистента' сохранены."}
 
-@app.post("/api/changelog")
-async def save_changelog(username: str = Depends(get_current_admin_username), content: str = Form(...)):
-    try:
-        with open(CHANGELOG_FILE, "w", encoding="utf-8") as f:
-            f.write(content)
-        return {"status": "ok", "message": "Журнал изменений сохранен."}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка сохранения: {e}")
+# --- CRUD API ДЛЯ ЖУРНАЛА ИЗМЕНЕНИЙ ---
+@app.get("/api/changelog", response_class=JSONResponse)
+async def get_changelog(username: str = Depends(get_current_admin_username)):
+    conn = get_db_connection()
+    entries = conn.execute("SELECT * FROM changelog_entries ORDER BY created_at DESC").fetchall()
+    conn.close()
+    return {"entries": [{"id": e["id"], "content": e["content"], "created_at": e["created_at"]} for e in entries]}
 
+@app.post("/api/changelog", response_class=JSONResponse)
+async def add_changelog_entry(entry: ChangelogEntry, username: str = Depends(get_current_admin_username)):
+    conn = get_db_connection()
+    conn.execute("INSERT INTO changelog_entries (content) VALUES (?)", (entry.content,))
+    conn.commit()
+    conn.close()
+    return {"status": "ok", "message": "Запись добавлена."}
+
+@app.put("/api/changelog/{entry_id}", response_class=JSONResponse)
+async def update_changelog_entry(entry_id: int, entry: ChangelogEntry, username: str = Depends(get_current_admin_username)):
+    conn = get_db_connection()
+    conn.execute("UPDATE changelog_entries SET content = ? WHERE id = ?", (entry.content, entry_id))
+    conn.commit()
+    conn.close()
+    return {"status": "ok", "message": "Запись обновлена."}
+
+@app.delete("/api/changelog/{entry_id}", response_class=JSONResponse)
+async def delete_changelog_entry(entry_id: int, username: str = Depends(get_current_admin_username)):
+    conn = get_db_connection()
+    conn.execute("DELETE FROM changelog_entries WHERE id = ?", (entry_id,))
+    conn.commit()
+    conn.close()
+    return {"status": "ok", "message": "Запись удалена."}
+
+# --- ОСТАЛЬНЫЕ API ---
 @app.post("/api/chat")
 async def handle_chat(chat_request: ChatRequest, username: str = Depends(get_current_admin_username)):
     try:
