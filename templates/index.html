@@ -317,7 +317,6 @@
             return;
         }
         entries.forEach(entry => {
-            // ИСПРАВЛЕНИЕ: Добавляем 'Z' к строке, чтобы она парсилась как UTC
             const date = new Date(entry.created_at + 'Z').toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' });
             const entryEl = document.createElement('div');
             entryEl.className = 'changelog-entry';
@@ -422,7 +421,7 @@
     });
 
     // --- Логика для Николая (Битрикс) ---
-    const nikolaiTestChatHistory = [];
+    let nikolaiTestChatHistory = [];
 
     document.getElementById('nikolaiSettingsForm').addEventListener('submit', async function(e) {
         e.preventDefault();
@@ -440,7 +439,6 @@
         const chatHistoryEl = document.getElementById('chat-history');
         chatHistoryEl.innerHTML = '';
         nikolaiTestChatHistory.forEach(msg => {
-            // ИСПРАВЛЕНИЕ: Добавляем 'Z' к строке, чтобы она парсилась как UTC
             const time = new Date(msg.time).toLocaleTimeString('ru-RU', { timeZone: 'Europe/Moscow', hour: '2-digit', minute: '2-digit' });
             const msgBlock = document.createElement('div');
             msgBlock.className = `message-block ${msg.role}-message`;
@@ -468,11 +466,11 @@
             const response = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_message: message }) });
             const data = await response.json();
             nikolaiTestChatHistory.push({ role: 'ai', content: data.ai_response, time: new Date() });
-            renderNikolaiChat();
         } catch (error) {
             nikolaiTestChatHistory.push({ role: 'ai', content: 'Ошибка: ' + error, time: new Date() });
-            renderNikolaiChat();
         } finally {
+            sessionStorage.setItem('nikolaiTestChatHistory', JSON.stringify(nikolaiTestChatHistory));
+            renderNikolaiChat();
             document.getElementById('loading-indicator').style.display = 'none';
         }
     };
@@ -488,6 +486,7 @@
 
     document.getElementById('clear-chat-btn').addEventListener('click', () => {
         nikolaiTestChatHistory.length = 0;
+        sessionStorage.removeItem('nikolaiTestChatHistory');
         renderNikolaiChat();
     });
 
@@ -543,6 +542,12 @@
         fetchStatus();
         setInterval(fetchStatus, 10000);
         loadChangelog();
+
+        const savedHistory = sessionStorage.getItem('nikolaiTestChatHistory');
+        if (savedHistory) {
+            nikolaiTestChatHistory = JSON.parse(savedHistory);
+            renderNikolaiChat();
+        }
     };
 </script>
 </body>
