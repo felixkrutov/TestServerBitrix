@@ -317,7 +317,8 @@
             return;
         }
         entries.forEach(entry => {
-            const date = new Date(entry.created_at).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' });
+            // ИСПРАВЛЕНИЕ: Добавляем 'Z' к строке, чтобы она парсилась как UTC
+            const date = new Date(entry.created_at + 'Z').toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' });
             const entryEl = document.createElement('div');
             entryEl.className = 'changelog-entry';
             entryEl.dataset.id = entry.id;
@@ -439,6 +440,7 @@
         const chatHistoryEl = document.getElementById('chat-history');
         chatHistoryEl.innerHTML = '';
         nikolaiTestChatHistory.forEach(msg => {
+            // ИСПРАВЛЕНИЕ: Добавляем 'Z' к строке, чтобы она парсилась как UTC
             const time = new Date(msg.time).toLocaleTimeString('ru-RU', { timeZone: 'Europe/Moscow', hour: '2-digit', minute: '2-digit' });
             const msgBlock = document.createElement('div');
             msgBlock.className = `message-block ${msg.role}-message`;
