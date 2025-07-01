@@ -451,7 +451,7 @@
         chatHistoryEl.scrollTop = chatHistoryEl.scrollHeight;
     };
 
-    document.getElementById('send-btn').addEventListener('click', async () => {
+    const sendNikolaiMessage = async () => {
         const userInput = document.getElementById('user-input');
         const message = userInput.value.trim();
         if (!message) return;
@@ -472,6 +472,15 @@
             renderNikolaiChat();
         } finally {
             document.getElementById('loading-indicator').style.display = 'none';
+        }
+    };
+
+    document.getElementById('send-btn').addEventListener('click', sendNikolaiMessage);
+
+    document.getElementById('user-input').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendNikolaiMessage();
         }
     });
 
