@@ -220,43 +220,90 @@ def get_current_admin_username(credentials: HTTPBasicCredentials = Depends(secur
     return credentials.username
 
 def get_ai_response(model_name: str, system_prompt_content: str, user_query: str, use_rag_for_this_request: bool, chat_history: list = None):
+    # Если запрос пользователя пустой, нет смысла обращаться к ИИ
+    if not user_query or not user_query.strip():
+        return "Пожалуйста, задайте ваш вопрос."
+
     context = ""
     if use_rag_for_this_request:
         print("INFO: Поиск релевантных документов в базе знаний...")
-        retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
-        relevant_docs = retriever.get_relevant_documents(user_query)
-        context = "\n\n---\n\n".join([doc.page_content for doc in relevant_docs])
+        try:
+            retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
+            relevant_docs = retriever.get_relevant_documents(user_query)
+            if relevant_docs:
+                context = "\n\n---\n\n".join([doc.page_content for doc in relevant_docs])
+                print(f"INFO: Найдено {len(relevant_docs)} релевантных документов.")
+            else:
+                print("INFO: Релевантные документы не найдены.")
+        except Exception as e:
+            print(f"ERROR: Ошибка при поиске в базе знаний: {e}")
     else:
         print("INFO: Использование базы знаний для этого запроса отключено.")
 
+    # Формируем канонический список сообщений
     messages = []
     final_system_prompt = system_prompt_content
     if context:
         final_system_prompt += f"\n\nИспользуй следующий контекст из базы знаний для ответа:\n<context>\n{context}\n</context>"
-    messages.append({"role": "system", "content": final_system_prompt})
 
+    # Добавляем системный промпт, только если он не пустой
+    if final_system_prompt and final_system_prompt.strip():
+        messages.append({"role": "system", "content": final_system_prompt})
+
+    # Добавляем историю чата
     if chat_history:
         for msg in chat_history:
-            messages.append({"role": msg["role"], "content": msg["content"]})
+            # Пропускаем сообщения с пустым контентом, если такие есть
+            if msg.get("content"):
+                # Адаптируем роль для Gemini ('ai' -> 'model')
+                role = "model" if msg["role"] == "ai" else msg["role"]
+                messages.append({"role": role, "content": msg["content"]})
 
-    if user_query:
-        messages.append({"role": "user", "content": user_query})
+    # Добавляем текущий запрос пользователя
+    messages.append({"role": "user", "content": user_query})
 
+    # --- Вызов API в зависимости от модели ---
     if model_name.startswith("gpt-") or model_name.startswith("o4-"):
         print(f"INFO: Используется OpenAI API для модели {model_name}")
         if not OPENAI_API_KEY: raise ValueError("OPENAI_API_KEY не установлен.")
-        response = openai_client.chat.completions.create(model=model_name, messages=messages)
+        
+        # OpenAI ожидает роли 'user', 'assistant', 'system'
+        openai_messages = []
+        for msg in messages:
+            role = "assistant" if msg["role"] == "model" else msg["role"]
+            openai_messages.append({"role": role, "content": msg["content"]})
+
+        response = openai_client.chat.completions.create(model=model_name, messages=openai_messages)
         return response.choices[0].message.content
+
     elif model_name.startswith("gemini-"):
         print(f"INFO: Используется Gemini API для модели {model_name}")
         if not GEMINI_API_KEY: raise ValueError("GEMINI_API_KEY не установлен.")
-        model = genai.GenerativeModel(model_name, system_instruction=final_system_prompt)
-        gemini_history = [{"role": "user" if msg["role"] == "user" else "model", "parts": [msg["content"]]} for msg in chat_history or []]
+
+        system_instruction = None
+        gemini_history = []
+
+        # Gemini принимает system_instruction отдельно
+        if messages and messages[0]["role"] == "system":
+            system_instruction = messages[0]["content"]
+            conversation_messages = messages[1:]
+        else:
+            conversation_messages = messages
+        
+        # Gemini ожидает 'parts' и роли 'user'/'model'
+        for msg in conversation_messages:
+             gemini_history.append({"role": msg["role"], "parts": [msg["content"]]})
+
+        model = genai.GenerativeModel(model_name, system_instruction=system_instruction)
+        # Последнее сообщение - это текущий запрос, который нужно отправить
+        last_message = gemini_history.pop()["parts"][0]
+        
         chat_session = model.start_chat(history=gemini_history)
-        response = chat_session.send_message(user_query)
+        response = chat_session.send_message(last_message)
         return response.text
     else:
         raise ValueError(f"Ошибка: Неизвестный провайдер для модели '{model_name}'.")
+
 
 # --- Админ-панель ---
 @app.get("/", response_class=HTMLResponse)
@@ -379,7 +426,8 @@ async def handle_chat(chat_request: ChatRequest, username: str = Depends(get_cur
     try:
         ai_response_text = get_ai_response(model_name, system_prompt, chat_request.user_message, use_rag_for_this_request=use_rag_nikolai)
     except Exception as e:
-        ai_response_text = f"Ошибка при обращении к ИИ ({model_name}): {str(e)}"
+        print(f"ERROR: Ошибка при вызове get_ai_response: {e}")
+        return JSONResponse(status_code=500, content={"ai_response": f"Критическая ошибка при обращении к ИИ: {e}"})
     return {"ai_response": ai_response_text}
 
 @app.post("/api/upload-document")
@@ -632,26 +680,29 @@ async def mossaassistant_handle_chat(
     try:
         ai_response_text = get_ai_response(model_name, system_prompt, chat_request.user_message, use_rag_for_this_request=use_rag_mossa, chat_history=chat_history)
         
-        if not current_chat_id:
-            is_new_chat = True
-            new_title = generate_chat_title(chat_request.user_message)
-            cursor = conn.cursor()
-            cursor.execute(
-                "INSERT INTO chats (user_id, title) VALUES (?, ?)",
-                (user["id"], new_title)
+        # Если это был пустой запрос, get_ai_response вернет сообщение-заглушку,
+        # и мы не должны сохранять его в историю или создавать новый чат.
+        if chat_request.user_message and chat_request.user_message.strip():
+            if not current_chat_id:
+                is_new_chat = True
+                new_title = generate_chat_title(chat_request.user_message)
+                cursor = conn.cursor()
+                cursor.execute(
+                    "INSERT INTO chats (user_id, title) VALUES (?, ?)",
+                    (user["id"], new_title)
+                )
+                conn.commit()
+                current_chat_id = cursor.lastrowid
+
+            conn.execute(
+                "INSERT INTO messages (chat_id, role, content) VALUES (?, ?, ?)",
+                (current_chat_id, 'user', chat_request.user_message)
+            )
+            conn.execute(
+                "INSERT INTO messages (chat_id, role, content) VALUES (?, ?, ?)",
+                (current_chat_id, 'ai', ai_response_text)
             )
             conn.commit()
-            current_chat_id = cursor.lastrowid
-
-        conn.execute(
-            "INSERT INTO messages (chat_id, role, content) VALUES (?, ?, ?)",
-            (current_chat_id, 'user', chat_request.user_message)
-        )
-        conn.execute(
-            "INSERT INTO messages (chat_id, role, content) VALUES (?, ?, ?)",
-            (current_chat_id, 'ai', ai_response_text)
-        )
-        conn.commit()
 
     except Exception as e:
         conn.close()
