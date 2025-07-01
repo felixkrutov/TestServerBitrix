@@ -49,7 +49,6 @@
         .changelog-content { white-space: pre-wrap; color: #fff; }
         .changelog-actions button { background: none; border: none; color: #adb5bd; }
         .changelog-actions button:hover { color: #fff; }
-        /* Стили для режима редактирования записи журнала */
         .changelog-content[contenteditable="true"] {
             background-color: #2c3034;
             border: 1px solid #86b7fe;
@@ -440,7 +439,7 @@
         const chatHistoryEl = document.getElementById('chat-history');
         chatHistoryEl.innerHTML = '';
         nikolaiTestChatHistory.forEach(msg => {
-            const time = new Date(msg.time).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+            const time = new Date(msg.time).toLocaleTimeString('ru-RU', { timeZone: 'Europe/Moscow', hour: '2-digit', minute: '2-digit' });
             const msgBlock = document.createElement('div');
             msgBlock.className = `message-block ${msg.role}-message`;
             msgBlock.innerHTML = `
