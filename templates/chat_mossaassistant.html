@@ -164,37 +164,31 @@
         #chat-container::-webkit-scrollbar-thumb { background: #444; border-radius: 5px; }
 
         .message-block {
-            display: flex;
-            flex-direction: column;
+            max-width: 90%;
+            line-height: 1.6;
             margin-top: 1.5rem;
         }
         .message-block.consecutive {
             margin-top: 0.25rem;
         }
         .message-block.ai {
-            align-items: flex-start;
+            align-self: flex-start;
         }
         .message-block.user {
-            align-items: flex-end;
-        }
-        .message-content {
-            max-width: 90%;
-            line-height: 1.6;
-        }
-        .message-block.user .message-content {
+            align-self: flex-end;
             background-color: var(--bg-input);
             padding: 0.75rem 1rem;
             border-radius: 12px;
         }
-        .message-content p {
+        .message-block p {
             margin: 0;
             white-space: pre-wrap;
         }
-        .message-content p + p {
+        .message-block p + p {
             margin-top: 1em;
         }
         .message-block.ai-loading {
-            align-items: flex-start;
+            align-self: flex-start;
             opacity: 0.7;
         }
 
@@ -490,21 +484,16 @@ document.addEventListener('DOMContentLoaded', () => {
             messageBlock.classList.add('consecutive');
         }
 
-        const messageContent = document.createElement('div');
-        messageContent.className = 'message-content';
-
         if (role === 'user' || role === 'ai-loading') {
-            messageContent.textContent = content;
+            messageBlock.textContent = content;
         } else { // role === 'ai'
             const paragraphs = content.split(/\n\s*\n/).filter(p => p.trim() !== '');
             paragraphs.forEach((paraText) => {
                 const p = document.createElement('p');
                 p.textContent = paraText;
-                messageContent.appendChild(p);
+                messageBlock.appendChild(p);
             });
         }
-        
-        messageBlock.appendChild(messageContent);
         
         if (role === 'ai-loading') {
             messageBlock.classList.remove('ai');
