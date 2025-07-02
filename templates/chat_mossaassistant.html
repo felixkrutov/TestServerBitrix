@@ -164,12 +164,11 @@
         #chat-container::-webkit-scrollbar { width: 8px; }
         #chat-container::-webkit-scrollbar-thumb { background: #444; border-radius: 5px; }
 
-        /* === ИСПРАВЛЕНИЕ №1: ШИРИНА СООБЩЕНИЙ === */
         .message-block {
             max-width: 90%;
             line-height: 1.6;
             margin-top: 1.5rem;
-            word-break: break-word; /* Эта строка заставляет текст правильно переноситься */
+            word-break: break-word;
         }
         .message-block.consecutive {
             margin-top: 0.25rem;
@@ -260,7 +259,6 @@
         #welcome-screen h1 { font-size: 3rem; }
         #welcome-screen p { color: var(--text-secondary); }
 
-        /* --- СТИЛИ ДЛЯ КАСТОМНОГО МОДАЛЬНОГО ОКНА --- */
         .modal-overlay {
             position: fixed;
             top: 0;
@@ -366,7 +364,6 @@
         </div>
     </main>
 
-    <!-- HTML-СТРУКТУРА МОДАЛЬНОГО ОКНА -->
     <div class="modal-overlay" id="custom-modal">
         <div class="modal-box">
             <h3 id="modal-title"></h3>
@@ -420,9 +417,7 @@ document.addEventListener('DOMContentLoaded', () => {
         deleteChat: (chatId) => fetch(`/mossaassistant/api/chats/${chatId}`, { method: 'DELETE' })
     };
 
-    // === ИСПРАВЛЕНИЕ №2: ПРОКРУТКА ЧАТА ВНИЗ ===
     const scrollToBottom = () => {
-        // Небольшая задержка, чтобы DOM успел обновиться перед прокруткой
         setTimeout(() => {
             chatContainerEl.scrollTop = chatContainerEl.scrollHeight;
         }, 0);
@@ -481,7 +476,6 @@ document.addEventListener('DOMContentLoaded', () => {
             addMessageToUI(msg.content, msg.role, isConsecutive);
             lastRole = msg.role;
         });
-        // Вызываем прокрутку после отрисовки ВСЕХ сообщений при загрузке чата
         scrollToBottom();
     };
 
@@ -508,7 +502,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         chatContainerEl.appendChild(messageBlock);
-        // Вызываем прокрутку после добавления КАЖДОГО нового сообщения
         scrollToBottom();
     };
 
