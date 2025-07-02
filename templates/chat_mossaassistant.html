@@ -153,13 +153,13 @@
             flex-grow: 1;
             overflow-y: auto;
             padding: 1rem;
-            padding-bottom: 12rem; /* Отступ снизу, чтобы поле ввода не перекрывало последнее сообщение */
+            padding-bottom: 12rem;
             max-width: 800px;
             width: 100%;
             margin: 0 auto;
             display: flex;
             flex-direction: column;
-            scroll-behavior: smooth; /* Добавляет плавность при прокрутке */
+            scroll-behavior: smooth;
         }
         #chat-container::-webkit-scrollbar { width: 8px; }
         #chat-container::-webkit-scrollbar-thumb { background: #444; border-radius: 5px; }
@@ -173,14 +173,14 @@
             margin-top: 0.25rem;
         }
         
-        /* ИСПРАВЛЕНИЕ №1: Адаптивная ширина сообщений */
-        /* Это свойство прижимает блок сообщения ИИ к левому краю и делает его ширину по содержимому */
         .message-block.ai {
             align-self: flex-start;
         }
-        /* Это свойство прижимает блок сообщения пользователя к правому краю и делает его ширину по содержимому */
+        
+        /* === ИСПРАВЛЕНИЕ №1 (УСИЛЕННОЕ) === */
         .message-block.user {
-            align-self: flex-end;
+            align-self: flex-end; /* Прижимаем к правому краю */
+            width: fit-content;    /* !!! ГЛАВНОЕ ИЗМЕНЕНИЕ: Делаем ширину по содержимому */
             background-color: var(--bg-input);
             padding: 0.75rem 1rem;
             border-radius: 12px;
@@ -394,7 +394,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const showSidebarBtn = document.getElementById('show-sidebar-btn');
     const bodyEl = document.body;
 
-    // --- ЭЛЕМЕНТЫ МОДАЛЬНОГО ОКНА ---
     const modal = {
         overlay: document.getElementById('custom-modal'),
         title: document.getElementById('modal-title'),
@@ -420,15 +419,14 @@ document.addEventListener('DOMContentLoaded', () => {
         deleteChat: (chatId) => fetch(`/mossaassistant/api/chats/${chatId}`, { method: 'DELETE' })
     };
 
-    // ИСПРАВЛЕНИЕ №2: Функция для прокрутки чата в самый низ
+    // === ИСПРАВЛЕНИЕ №2: Функция прокрутки чата вниз ===
+    // Эта функция вызывается каждый раз, когда в чат добавляется новое сообщение
     const scrollToBottom = () => {
-        // Небольшая задержка, чтобы DOM успел обновиться перед прокруткой
         setTimeout(() => {
             chatContainerEl.scrollTop = chatContainerEl.scrollHeight;
         }, 0);
     };
 
-    // --- ЛОГИКА МОДАЛЬНОГО ОКНА ---
     const showModal = ({ title, message, showInput = false, inputValue = '', confirmText = 'OK' }) => {
         return new Promise((resolve) => {
             modal.title.textContent = title;
@@ -482,7 +480,7 @@ document.addEventListener('DOMContentLoaded', () => {
             addMessageToUI(msg.content, msg.role, isConsecutive);
             lastRole = msg.role;
         });
-        // ИСПРАВЛЕНИЕ №2: Вызываем прокрутку после отрисовки всех сообщений
+        // Вызываем прокрутку после отрисовки ВСЕХ сообщений при загрузке чата
         scrollToBottom();
     };
 
@@ -495,7 +493,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (role === 'user' || role === 'ai-loading') {
             messageBlock.textContent = content;
-        } else { // role === 'ai'
+        } else {
             const paragraphs = content.split(/\n\s*\n/).filter(p => p.trim() !== '');
             paragraphs.forEach((paraText) => {
                 const p = document.createElement('p');
@@ -509,7 +507,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         chatContainerEl.appendChild(messageBlock);
-        // ИСПРАВЛЕНИЕ №2: Вызываем прокрутку после добавления каждого нового сообщения
+        // Вызываем прокрутку после добавления КАЖДОГО нового сообщения
         scrollToBottom();
     };
 
