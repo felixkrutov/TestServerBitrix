@@ -153,7 +153,7 @@
             flex-grow: 1;
             overflow-y: auto;
             padding: 1rem;
-            padding-bottom: 12rem;
+            padding-bottom: 2rem;
             max-width: 800px;
             width: 100%;
             margin: 0 auto;
@@ -184,6 +184,7 @@
             background-color: var(--bg-input);
             padding: 0.75rem 1rem;
             border-radius: 12px;
+            margin-left: auto;
         }
 
         .message-block p {
@@ -199,12 +200,13 @@
         }
 
         .input-area-wrapper {
-            position: absolute;
+            position: sticky;
             bottom: 0;
             left: 0;
             right: 0;
             padding: 2rem 1rem;
             background: linear-gradient(to top, var(--bg-main) 50%, transparent);
+            z-index: 10;
         }
         
         .input-area {
@@ -355,11 +357,11 @@
                 <h1>Mossa AI</h1>
                 <p>Начните новый диалог или выберите существующий</p>
             </div>
-        </div>
-        <div class="input-area-wrapper">
-            <div class="input-area">
-                <textarea id="user-input" placeholder="Спросите что-нибудь..." rows="1"></textarea>
-                <button id="send-btn" disabled><i class="bi bi-send"></i></button>
+            <div class="input-area-wrapper">
+                <div class="input-area">
+                    <textarea id="user-input" placeholder="Спросите что-нибудь..." rows="1"></textarea>
+                    <button id="send-btn" disabled><i class="bi bi-send"></i></button>
+                </div>
             </div>
         </div>
     </main>
