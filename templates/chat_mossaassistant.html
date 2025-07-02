@@ -164,6 +164,10 @@
         .message-wrapper {
             display: flex;
             flex-direction: column;
+            margin-top: 1.5rem;
+        }
+        .message-wrapper.consecutive {
+            margin-top: 0.25rem;
         }
         .message-wrapper.user {
             align-items: flex-end;
@@ -171,21 +175,22 @@
         .message-wrapper.ai {
             align-items: flex-start;
         }
-        .message-block {
+        .message-content {
             max-width: 90%;
-            white-space: pre-wrap;
             line-height: 1.6;
-            margin-top: 1.5rem;
         }
-        .message-block.consecutive {
-            margin-top: 0.25rem;
-        }
-        .message-wrapper.user .message-block {
+        .message-wrapper.user .message-content {
             background-color: var(--bg-input);
             padding: 0.75rem 1rem;
             border-radius: 12px;
         }
-        .message-wrapper.ai-loading .message-block {
+        .message-content p {
+            margin: 0;
+        }
+        .message-content p + p {
+            margin-top: 1em;
+        }
+        .message-wrapper.ai-loading .message-content {
             opacity: 0.7;
         }
 
@@ -468,29 +473,32 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const addMessageToUI = (content, role, isConsecutive = false) => {
-        let wrapper = chatContainerEl.lastElementChild;
-
-        // Если роль сменилась или это первое сообщение, создаем новый wrapper
-        if (!wrapper || wrapper.dataset.role !== role) {
-            wrapper = document.createElement('div');
-            wrapper.className = `message-wrapper ${role}`;
-            wrapper.dataset.role = role;
-            chatContainerEl.appendChild(wrapper);
-        }
-
-        const messageBlock = document.createElement('div');
-        messageBlock.className = 'message-block';
-        messageBlock.textContent = content;
-
+        const wrapper = document.createElement('div');
+        wrapper.className = `message-wrapper ${role}`;
         if (isConsecutive) {
-            messageBlock.classList.add('consecutive');
+            wrapper.classList.add('consecutive');
         }
+
+        const messageContent = document.createElement('div');
+        messageContent.className = 'message-content';
+
+        // Разделяем контент на параграфы и создаем для каждого тег <p>
+        const paragraphs = content.split(/\n\s*\n/); // Разделяем по двойному переносу строки
+        paragraphs.forEach(paraText => {
+            if (paraText.trim() !== '') {
+                const p = document.createElement('p');
+                p.textContent = paraText.trim();
+                messageContent.appendChild(p);
+            }
+        });
+        
+        wrapper.appendChild(messageContent);
         
         if (role === 'ai-loading') {
             wrapper.classList.add('ai-loading');
         }
 
-        wrapper.appendChild(messageBlock);
+        chatContainerEl.appendChild(wrapper);
         chatContainerEl.scrollTop = chatContainerEl.scrollHeight;
     };
 
@@ -532,7 +540,7 @@ document.addEventListener('DOMContentLoaded', () => {
         chatContainerEl.style.display = 'block';
 
         const lastMessageWrapper = chatContainerEl.lastElementChild;
-        const isConsecutiveUserMessage = lastMessageWrapper && lastMessageWrapper.dataset.role === 'user';
+        const isConsecutiveUserMessage = lastMessageWrapper && lastMessageWrapper.classList.contains('user');
         addMessageToUI(message, 'user', isConsecutiveUserMessage);
         
         userInputEl.value = '';
@@ -546,7 +554,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (response.detail) throw new Error(response.detail);
 
             const lastMessageWrapperAI = chatContainerEl.lastElementChild;
-            const isConsecutiveAIMessage = lastMessageWrapperAI && lastMessageWrapperAI.dataset.role === 'ai';
+            const isConsecutiveAIMessage = lastMessageWrapperAI && lastMessageWrapperAI.classList.contains('ai');
             addMessageToUI(response.ai_response, 'ai', isConsecutiveAIMessage);
             
             if (response.is_new_chat) {
