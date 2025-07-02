@@ -55,6 +55,11 @@ class UserCreate(BaseModel):
 class ChangelogEntry(BaseModel):
     content: str
 
+# НОВАЯ МОДЕЛЬ ДЛЯ ОБНОВЛЕНИЯ ТЕМЫ
+class ThemeUpdateRequest(BaseModel):
+    theme: str
+
+
 # --- Пути к файлам и папкам ---
 MODELS_LIST_FILE = "models_list.txt"
 CURRENT_MODEL_FILE = "current_model.txt"
@@ -140,6 +145,16 @@ def initialize_database():
             hashed_password TEXT NOT NULL
         )
     """)
+    # ДОБАВЛЕНИЕ КОЛОНКИ ДЛЯ ТЕМЫ
+    try:
+        cursor.execute("ALTER TABLE users ADD COLUMN theme TEXT DEFAULT 'dark'")
+        print("INFO: Колонка 'theme' успешно добавлена в таблицу 'users'.")
+    except sqlite3.OperationalError as e:
+        if "duplicate column name" in str(e):
+            print("INFO: Колонка 'theme' уже существует в таблице 'users'.")
+        else:
+            raise
+            
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS sessions (
             session_token TEXT PRIMARY KEY,
@@ -220,7 +235,6 @@ def get_current_admin_username(credentials: HTTPBasicCredentials = Depends(secur
     return credentials.username
 
 def get_ai_response(model_name: str, system_prompt_content: str, user_query: str, use_rag_for_this_request: bool, chat_history: list = None):
-    # Если запрос пользователя пустой, нет смысла обращаться к ИИ
     if not user_query or not user_query.strip():
         return "Пожалуйста, задайте ваш вопрос."
 
@@ -240,34 +254,26 @@ def get_ai_response(model_name: str, system_prompt_content: str, user_query: str
     else:
         print("INFO: Использование базы знаний для этого запроса отключено.")
 
-    # Формируем канонический список сообщений
     messages = []
     final_system_prompt = system_prompt_content
     if context:
         final_system_prompt += f"\n\nИспользуй следующий контекст из базы знаний для ответа:\n<context>\n{context}\n</context>"
 
-    # Добавляем системный промпт, только если он не пустой
     if final_system_prompt and final_system_prompt.strip():
         messages.append({"role": "system", "content": final_system_prompt})
 
-    # Добавляем историю чата
     if chat_history:
         for msg in chat_history:
-            # Пропускаем сообщения с пустым контентом, если такие есть
             if msg.get("content"):
-                # Адаптируем роль для Gemini ('ai' -> 'model')
                 role = "model" if msg["role"] == "ai" else msg["role"]
                 messages.append({"role": role, "content": msg["content"]})
 
-    # Добавляем текущий запрос пользователя
     messages.append({"role": "user", "content": user_query})
 
-    # --- Вызов API в зависимости от модели ---
     if model_name.startswith("gpt-") or model_name.startswith("o4-"):
         print(f"INFO: Используется OpenAI API для модели {model_name}")
         if not OPENAI_API_KEY: raise ValueError("OPENAI_API_KEY не установлен.")
         
-        # OpenAI ожидает роли 'user', 'assistant', 'system'
         openai_messages = []
         for msg in messages:
             role = "assistant" if msg["role"] == "model" else msg["role"]
@@ -283,19 +289,16 @@ def get_ai_response(model_name: str, system_prompt_content: str, user_query: str
         system_instruction = None
         gemini_history = []
 
-        # Gemini принимает system_instruction отдельно
         if messages and messages[0]["role"] == "system":
             system_instruction = messages[0]["content"]
             conversation_messages = messages[1:]
         else:
             conversation_messages = messages
         
-        # Gemini ожидает 'parts' и роли 'user'/'model'
         for msg in conversation_messages:
              gemini_history.append({"role": msg["role"], "parts": [msg["content"]]})
 
         model = genai.GenerativeModel(model_name, system_instruction=system_instruction)
-        # Последнее сообщение - это текущий запрос, который нужно отправить
         last_message = gemini_history.pop()["parts"][0]
         
         chat_session = model.start_chat(history=gemini_history)
@@ -680,8 +683,6 @@ async def mossaassistant_handle_chat(
     try:
         ai_response_text = get_ai_response(model_name, system_prompt, chat_request.user_message, use_rag_for_this_request=use_rag_mossa, chat_history=chat_history)
         
-        # Если это был пустой запрос, get_ai_response вернет сообщение-заглушку,
-        # и мы не должны сохранять его в историю или создавать новый чат.
         if chat_request.user_message and chat_request.user_message.strip():
             if not current_chat_id:
                 is_new_chat = True
@@ -742,3 +743,21 @@ async def delete_chat(chat_id: int, user: dict = Depends(get_current_mossa_user)
     conn.commit()
     conn.close()
     return {"message": "Чат успешно удален"}
+
+# НОВЫЙ ЭНДПОИНТ ДЛЯ СОХРАНЕНИЯ ТЕМЫ
+@app.put("/mossaassistant/api/user/theme", response_class=JSONResponse)
+async def update_user_theme(
+    theme_request: ThemeUpdateRequest,
+    user: dict = Depends(get_current_mossa_user)
+):
+    if theme_request.theme not in ["light", "dark"]:
+        raise HTTPException(status_code=400, detail="Недопустимое значение темы")
+    
+    conn = get_db_connection()
+    conn.execute(
+        "UPDATE users SET theme = ? WHERE id = ?",
+        (theme_request.theme, user["id"])
+    )
+    conn.commit()
+    conn.close()
+    return {"status": "ok", "message": "Тема успешно обновлена"}
