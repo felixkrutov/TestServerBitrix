@@ -157,41 +157,38 @@
             max-width: 800px;
             width: 100%;
             margin: 0 auto;
+            display: flex;
+            flex-direction: column;
         }
         #chat-container::-webkit-scrollbar { width: 8px; }
         #chat-container::-webkit-scrollbar-thumb { background: #444; border-radius: 5px; }
 
-        .message-wrapper {
-            display: flex;
-            flex-direction: column;
-            margin-top: 1.5rem;
-        }
-        .message-wrapper.consecutive {
-            margin-top: 0.25rem;
-        }
-        .message-wrapper.user {
-            align-items: flex-end;
-        }
-        .message-wrapper.ai {
-            align-items: flex-start;
-        }
-        .message-content {
+        .message-block {
             max-width: 90%;
             line-height: 1.6;
+            margin-top: 1.5rem;
         }
-        .message-wrapper.user .message-content {
+        .message-block.consecutive {
+            margin-top: 0.25rem;
+        }
+        .message-block.ai {
+            align-self: flex-start;
+        }
+        .message-block.user {
+            align-self: flex-end;
             background-color: var(--bg-input);
             padding: 0.75rem 1rem;
             border-radius: 12px;
         }
-        .message-content p {
+        .message-block p {
             margin: 0;
             white-space: pre-wrap;
         }
-        .message-content p + p {
+        .message-block p + p {
             margin-top: 1em;
         }
-        .message-wrapper.ai-loading .message-content {
+        .message-block.ai-loading {
+            align-self: flex-start;
             opacity: 0.7;
         }
 
@@ -481,31 +478,28 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const addMessageToUI = (content, role, isConsecutive = false) => {
-        const wrapper = document.createElement('div');
-        wrapper.className = `message-wrapper ${role}`;
+        const messageBlock = document.createElement('div');
+        messageBlock.className = `message-block ${role}`;
         if (isConsecutive) {
-            wrapper.classList.add('consecutive');
+            messageBlock.classList.add('consecutive');
         }
 
-        const messageContent = document.createElement('div');
-        messageContent.className = 'message-content';
-
-        const paragraphs = content.split(/\n\s*\n/);
-        paragraphs.forEach(paraText => {
-            if (paraText.trim() !== '') {
+        if (role === 'user' || role === 'ai-loading') {
+            messageBlock.textContent = content;
+        } else { // role === 'ai'
+            const paragraphs = content.split(/\n\s*\n/).filter(p => p.trim() !== '');
+            paragraphs.forEach((paraText) => {
                 const p = document.createElement('p');
-                p.textContent = paraText.trim();
-                messageContent.appendChild(p);
-            }
-        });
-        
-        wrapper.appendChild(messageContent);
+                p.textContent = paraText;
+                messageBlock.appendChild(p);
+            });
+        }
         
         if (role === 'ai-loading') {
-            wrapper.classList.add('ai-loading');
+            messageBlock.classList.remove('ai');
         }
 
-        chatContainerEl.appendChild(wrapper);
+        chatContainerEl.appendChild(messageBlock);
         scrollToBottom();
     };
 
@@ -546,8 +540,8 @@ document.addEventListener('DOMContentLoaded', () => {
         welcomeScreenEl.style.display = 'none';
         chatContainerEl.style.display = 'block';
 
-        const lastMessageWrapper = chatContainerEl.lastElementChild;
-        const isConsecutiveUserMessage = lastMessageWrapper && lastMessageWrapper.classList.contains('user');
+        const lastMessageBlock = chatContainerEl.lastElementChild;
+        const isConsecutiveUserMessage = lastMessageBlock && lastMessageBlock.classList.contains('user');
         addMessageToUI(message, 'user', isConsecutiveUserMessage);
         
         userInputEl.value = '';
@@ -556,12 +550,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const response = await api.sendMessage(message, currentChatId);
-            document.querySelector('.message-wrapper.ai-loading')?.remove();
+            
+            const loadingIndicator = document.querySelector('.message-block.ai-loading');
+            if (loadingIndicator) {
+                loadingIndicator.remove();
+            }
 
             if (response.detail) throw new Error(response.detail);
 
-            const lastMessageWrapperAI = chatContainerEl.lastElementChild;
-            const isConsecutiveAIMessage = lastMessageWrapperAI && lastMessageWrapperAI.classList.contains('ai');
+            const lastMessageBlockAfterLoading = chatContainerEl.lastElementChild;
+            const isConsecutiveAIMessage = lastMessageBlockAfterLoading && lastMessageBlockAfterLoading.classList.contains('ai');
             addMessageToUI(response.ai_response, 'ai', isConsecutiveAIMessage);
             
             if (response.is_new_chat) {
@@ -571,7 +569,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } catch (error) {
             console.error("Ошибка отправки сообщения:", error);
-            document.querySelector('.message-wrapper.ai-loading')?.remove();
+            const loadingIndicator = document.querySelector('.message-block.ai-loading');
+            if (loadingIndicator) {
+                loadingIndicator.remove();
+            }
             addMessageToUI(`Ошибка: ${error.message}`, 'ai', false);
         } finally {
             isSending = false;
