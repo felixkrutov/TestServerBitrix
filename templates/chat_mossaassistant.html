@@ -157,34 +157,35 @@
             max-width: 800px;
             width: 100%;
             margin: 0 auto;
-            display: flex;
-            flex-direction: column;
-            gap: 3.5rem;
         }
         #chat-container::-webkit-scrollbar { width: 8px; }
         #chat-container::-webkit-scrollbar-thumb { background: #444; border-radius: 5px; }
 
-        .message-block {
+        .message-wrapper {
             display: flex;
-            width: 100%;
+            flex-direction: column;
         }
-        .message-block.ai {
-            justify-content: flex-start;
+        .message-wrapper.user {
+            align-items: flex-end;
         }
-        .message-block.user {
-            justify-content: flex-end;
+        .message-wrapper.ai {
+            align-items: flex-start;
         }
-        .message-content {
+        .message-block {
             max-width: 90%;
             white-space: pre-wrap;
             line-height: 1.6;
+            margin-top: 1.5rem;
         }
-        .message-block.user .message-content {
+        .message-block.consecutive {
+            margin-top: 0.25rem;
+        }
+        .message-wrapper.user .message-block {
             background-color: var(--bg-input);
             padding: 0.75rem 1rem;
             border-radius: 12px;
         }
-        .message-block.ai-loading .message-content {
+        .message-wrapper.ai-loading .message-block {
             opacity: 0.7;
         }
 
@@ -458,24 +459,38 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const renderMessages = (messages) => {
         chatContainerEl.innerHTML = '';
-        messages.forEach(msg => addMessageToUI(msg.content, msg.role));
+        let lastRole = null;
+        messages.forEach(msg => {
+            const isConsecutive = msg.role === lastRole;
+            addMessageToUI(msg.content, msg.role, isConsecutive);
+            lastRole = msg.role;
+        });
     };
 
-    const addMessageToUI = (content, role) => {
-        const messageBlock = document.createElement('div');
-        messageBlock.className = `message-block ${role}`;
+    const addMessageToUI = (content, role, isConsecutive = false) => {
+        let wrapper = chatContainerEl.lastElementChild;
 
-        const messageContent = document.createElement('div');
-        messageContent.className = 'message-content';
-        messageContent.textContent = content;
-
-        messageBlock.appendChild(messageContent);
-        
-        if (role === 'ai-loading') {
-            messageBlock.classList.remove('ai');
+        // Если роль сменилась или это первое сообщение, создаем новый wrapper
+        if (!wrapper || wrapper.dataset.role !== role) {
+            wrapper = document.createElement('div');
+            wrapper.className = `message-wrapper ${role}`;
+            wrapper.dataset.role = role;
+            chatContainerEl.appendChild(wrapper);
         }
 
-        chatContainerEl.appendChild(messageBlock);
+        const messageBlock = document.createElement('div');
+        messageBlock.className = 'message-block';
+        messageBlock.textContent = content;
+
+        if (isConsecutive) {
+            messageBlock.classList.add('consecutive');
+        }
+        
+        if (role === 'ai-loading') {
+            wrapper.classList.add('ai-loading');
+        }
+
+        wrapper.appendChild(messageBlock);
         chatContainerEl.scrollTop = chatContainerEl.scrollHeight;
     };
 
@@ -516,18 +531,23 @@ document.addEventListener('DOMContentLoaded', () => {
         welcomeScreenEl.style.display = 'none';
         chatContainerEl.style.display = 'block';
 
-        addMessageToUI(message, 'user');
+        const lastMessageWrapper = chatContainerEl.lastElementChild;
+        const isConsecutiveUserMessage = lastMessageWrapper && lastMessageWrapper.dataset.role === 'user';
+        addMessageToUI(message, 'user', isConsecutiveUserMessage);
+        
         userInputEl.value = '';
         adjustTextareaHeight();
-        addMessageToUI('Думаю...', 'ai-loading');
+        addMessageToUI('Думаю...', 'ai-loading', false);
 
         try {
             const response = await api.sendMessage(message, currentChatId);
-            document.querySelector('.message-block.ai-loading')?.remove();
+            document.querySelector('.message-wrapper.ai-loading')?.remove();
 
             if (response.detail) throw new Error(response.detail);
 
-            addMessageToUI(response.ai_response, 'ai');
+            const lastMessageWrapperAI = chatContainerEl.lastElementChild;
+            const isConsecutiveAIMessage = lastMessageWrapperAI && lastMessageWrapperAI.dataset.role === 'ai';
+            addMessageToUI(response.ai_response, 'ai', isConsecutiveAIMessage);
             
             if (response.is_new_chat) {
                 currentChatId = response.chat_id;
@@ -536,8 +556,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } catch (error) {
             console.error("Ошибка отправки сообщения:", error);
-            document.querySelector('.message-block.ai-loading')?.remove();
-            addMessageToUI(`Ошибка: ${error.message}`, 'ai');
+            document.querySelector('.message-wrapper.ai-loading')?.remove();
+            addMessageToUI(`Ошибка: ${error.message}`, 'ai', false);
         } finally {
             isSending = false;
             sendBtn.disabled = userInputEl.value.trim() === '';
