@@ -164,10 +164,12 @@
         #chat-container::-webkit-scrollbar { width: 8px; }
         #chat-container::-webkit-scrollbar-thumb { background: #444; border-radius: 5px; }
 
+        /* === ИСПРАВЛЕНИЕ №1: ШИРИНА СООБЩЕНИЙ === */
         .message-block {
             max-width: 90%;
             line-height: 1.6;
             margin-top: 1.5rem;
+            word-break: break-word; /* Эта строка заставляет текст правильно переноситься */
         }
         .message-block.consecutive {
             margin-top: 0.25rem;
@@ -177,10 +179,9 @@
             align-self: flex-start;
         }
         
-        /* === ИСПРАВЛЕНИЕ №1 (УСИЛЕННОЕ) === */
         .message-block.user {
-            align-self: flex-end; /* Прижимаем к правому краю */
-            width: fit-content;    /* !!! ГЛАВНОЕ ИЗМЕНЕНИЕ: Делаем ширину по содержимому */
+            align-self: flex-end;
+            width: fit-content;
             background-color: var(--bg-input);
             padding: 0.75rem 1rem;
             border-radius: 12px;
@@ -419,9 +420,9 @@ document.addEventListener('DOMContentLoaded', () => {
         deleteChat: (chatId) => fetch(`/mossaassistant/api/chats/${chatId}`, { method: 'DELETE' })
     };
 
-    // === ИСПРАВЛЕНИЕ №2: Функция прокрутки чата вниз ===
-    // Эта функция вызывается каждый раз, когда в чат добавляется новое сообщение
+    // === ИСПРАВЛЕНИЕ №2: ПРОКРУТКА ЧАТА ВНИЗ ===
     const scrollToBottom = () => {
+        // Небольшая задержка, чтобы DOM успел обновиться перед прокруткой
         setTimeout(() => {
             chatContainerEl.scrollTop = chatContainerEl.scrollHeight;
         }, 0);
