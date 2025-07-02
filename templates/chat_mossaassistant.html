@@ -186,6 +186,7 @@
         }
         .message-content p {
             margin: 0;
+            white-space: pre-wrap;
         }
         .message-content p + p {
             margin-top: 1em;
@@ -416,6 +417,12 @@ document.addEventListener('DOMContentLoaded', () => {
         deleteChat: (chatId) => fetch(`/mossaassistant/api/chats/${chatId}`, { method: 'DELETE' })
     };
 
+    const scrollToBottom = () => {
+        setTimeout(() => {
+            chatContainerEl.scrollTop = chatContainerEl.scrollHeight;
+        }, 0);
+    };
+
     // --- ЛОГИКА МОДАЛЬНОГО ОКНА ---
     const showModal = ({ title, message, showInput = false, inputValue = '', confirmText = 'OK' }) => {
         return new Promise((resolve) => {
@@ -470,6 +477,7 @@ document.addEventListener('DOMContentLoaded', () => {
             addMessageToUI(msg.content, msg.role, isConsecutive);
             lastRole = msg.role;
         });
+        scrollToBottom();
     };
 
     const addMessageToUI = (content, role, isConsecutive = false) => {
@@ -482,8 +490,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const messageContent = document.createElement('div');
         messageContent.className = 'message-content';
 
-        // Разделяем контент на параграфы и создаем для каждого тег <p>
-        const paragraphs = content.split(/\n\s*\n/); // Разделяем по двойному переносу строки
+        const paragraphs = content.split(/\n\s*\n/);
         paragraphs.forEach(paraText => {
             if (paraText.trim() !== '') {
                 const p = document.createElement('p');
@@ -499,7 +506,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         chatContainerEl.appendChild(wrapper);
-        chatContainerEl.scrollTop = chatContainerEl.scrollHeight;
+        scrollToBottom();
     };
 
     const loadChats = async () => {
