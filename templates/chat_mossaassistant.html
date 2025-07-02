@@ -168,23 +168,21 @@
             max-width: 90%;
             display: flex;
         }
-        .message-block.user {
-            align-self: flex-end;
-        }
         .message-block.ai {
             align-self: flex-start;
+        }
+        .message-block.user {
+            align-self: flex-end;
         }
         .message-content {
             white-space: pre-wrap;
             line-height: 1.6;
         }
-        
         .message-block.user .message-content {
             background-color: var(--bg-input);
             padding: 0.75rem 1rem;
             border-radius: 12px;
         }
-        
         .message-block.ai-loading .message-content {
             opacity: 0.7;
         }
