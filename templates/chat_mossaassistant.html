@@ -17,9 +17,7 @@
             --sidebar-width: 260px;
             --border-color: rgba(255, 255, 255, 0.1);
         }
-
         * { box-sizing: border-box; margin: 0; padding: 0; }
-
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
             background-color: var(--bg-main);
@@ -28,311 +26,153 @@
             height: 100vh;
             overflow: hidden;
         }
-
         .sidebar {
             width: var(--sidebar-width);
             background-color: var(--bg-sidebar);
-            display: flex;
-            flex-direction: column;
+            display: flex; flex-direction: column;
             padding: 1rem;
             transition: margin-left 0.3s ease;
             flex-shrink: 0;
         }
-
-        .main-content {
-            flex-grow: 1;
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-            position: relative;
-        }
-        
         body.sidebar-collapsed .sidebar { margin-left: calc(-1 * var(--sidebar-width)); }
         .sidebar-toggle {
-            position: absolute;
-            top: 1rem;
-            left: 1rem;
-            z-index: 1001;
-            background: var(--bg-input);
-            color: var(--text-primary);
-            border: 1px solid var(--border-color);
-            border-radius: 5px;
-            width: 40px;
-            height: 40px;
-            cursor: pointer;
-            display: none;
+            position: absolute; top: 1rem; left: 1rem; z-index: 1001;
+            background: var(--bg-input); color: var(--text-primary);
+            border: 1px solid var(--border-color); border-radius: 5px;
+            width: 40px; height: 40px; cursor: pointer; display: none;
         }
         body.sidebar-collapsed .sidebar-toggle { display: block; }
-
-
-        .sidebar-header {
-            display: flex;
-            gap: 0.5rem;
-            margin-bottom: 1.5rem;
-        }
-
-        .sidebar-header .new-chat-btn {
-            flex-grow: 1;
-            padding: 0.75rem;
-            background: transparent;
-            border: 1px solid var(--border-color);
-            color: var(--text-primary);
-            border-radius: 5px;
-            cursor: pointer;
-            text-align: left;
-            font-size: 0.9rem;
+        .sidebar-header { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; }
+        .new-chat-btn, .hide-sidebar-btn {
+            background: transparent; border: 1px solid var(--border-color);
+            color: var(--text-primary); border-radius: 5px; cursor: pointer;
             transition: background-color 0.2s ease;
         }
-        .sidebar-header .new-chat-btn:hover { background-color: rgba(255, 255, 255, 0.1); }
-
-        .sidebar-header .hide-sidebar-btn {
-            flex-shrink: 0;
-            width: 40px;
-            background: transparent;
-            border: 1px solid var(--border-color);
-            color: var(--text-primary);
-            border-radius: 5px;
-            cursor: pointer;
-            transition: background-color 0.2s ease;
-        }
-        .sidebar-header .hide-sidebar-btn:hover { background-color: rgba(255, 255, 255, 0.1); }
-
-        #chat-list {
-            flex-grow: 1;
-            overflow-y: auto;
-            list-style: none;
-        }
+        .new-chat-btn { flex-grow: 1; padding: 0.75rem; text-align: left; font-size: 0.9rem; }
+        .new-chat-btn:hover, .hide-sidebar-btn:hover { background-color: rgba(255,255,255,0.1); }
+        .hide-sidebar-btn { width: 40px; flex-shrink: 0; }
+        #chat-list { flex-grow: 1; overflow-y: auto; list-style: none; }
         #chat-list::-webkit-scrollbar { width: 5px; }
         #chat-list::-webkit-scrollbar-thumb { background: #555; border-radius: 5px; }
-
-        .chat-list-item {
-            display: flex;
-            align-items: center;
-            padding: 0.75rem;
-            border-radius: 5px;
-            cursor: pointer;
-            margin-bottom: 0.25rem;
-            position: relative;
-        }
-        .chat-list-item:hover, .chat-list-item.active { background-color: var(--bg-input); }
-        .chat-list-item .chat-title {
-            flex-grow: 1;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        .chat-list-item .chat-actions { display: none; }
-        .chat-list-item:hover .chat-actions, .chat-list-item.active .chat-actions { display: flex; gap: 0.5rem; }
+        .chat-list-item { position: relative; display: flex; align-items: center; padding: 0.75rem; cursor: pointer; border-radius: 5px; margin-bottom: 0.25rem; }
+        .chat-list-item:hover, .chat-list-item.active { background: var(--bg-input); }
+        .chat-title { flex-grow: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .chat-actions { display: none; gap: 0.5rem; }
+        .chat-list-item:hover .chat-actions, .chat-list-item.active .chat-actions { display: flex; }
         .chat-actions button { background: none; border: none; color: var(--text-secondary); cursor: pointer; }
         .chat-actions button:hover { color: var(--text-primary); }
-
         .sidebar-footer {
-            border-top: 1px solid var(--border-color);
-            padding-top: 1rem;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
+            border-top: 1px solid var(--border-color); padding-top: 1rem;
+            display: flex; align-items: center; justify-content: space-between;
         }
-        .sidebar-footer .user-info { display: flex; align-items: center; gap: 0.5rem; }
-        .sidebar-footer .user-icon {
+        .user-info { display: flex; align-items: center; gap: 0.5rem; }
+        .user-icon {
             width: 30px; height: 30px; border-radius: 50%;
             background: var(--accent-color); display: flex;
             align-items: center; justify-content: center; font-weight: bold;
         }
-        .sidebar-footer .logout-btn { background: none; border: none; color: var(--text-secondary); cursor: pointer; }
-        .sidebar-footer .logout-btn:hover { color: var(--text-primary); }
+        .logout-btn { background: none; border: none; color: var(--text-secondary); cursor: pointer; }
+        .logout-btn:hover { color: var(--text-primary); }
 
-        .chat-area {
-            flex-grow: 1;
-            position: relative;
-            display: flex;
-            flex-direction: column;
-        }
-
+        .chat-area { flex-grow: 1; position: relative; display: flex; flex-direction: column; }
         #chat-container {
-            flex-grow: 1;
-            overflow-y: auto;
-            padding: 1rem;
-            padding-bottom: 12rem;
-            max-width: 800px;
-            width: 100%;
-            margin: 0 auto;
-            display: flex;
-            flex-direction: column;
+            flex-grow: 1; overflow-y: auto;
+            padding: 1rem; padding-bottom: 12rem;
+            max-width: 800px; width: 100%; margin: 0 auto;
+            display: flex; flex-direction: column; /* важно — flex, чтобы работал align-self */
             scroll-behavior: smooth;
         }
         #chat-container::-webkit-scrollbar { width: 8px; }
         #chat-container::-webkit-scrollbar-thumb { background: #444; border-radius: 5px; }
 
         .message-block {
-            max-width: 90%;
-            line-height: 1.6;
-            margin-top: 1.5rem;
-            word-break: break-word;
+            max-width: 90%; line-height: 1.6; margin-top: 1.5rem; word-break: break-word;
         }
-        .message-block.consecutive {
-            margin-top: 0.25rem;
-        }
-        
-        .message-block.ai {
-            align-self: flex-start;
-        }
-        
+        .message-block.consecutive { margin-top: 0.25rem; }
+        .message-block.ai { align-self: flex-start; }
         .message-block.user {
             align-self: flex-end;
-            width: fit-content;
             background-color: var(--bg-input);
             padding: 0.75rem 1rem;
             border-radius: 12px;
+            width: fit-content;
         }
+        .message-block.ai-loading { align-self: flex-start; opacity: 0.7; }
 
-        .message-block p {
-            margin: 0;
-            white-space: pre-wrap;
-        }
-        .message-block p + p {
-            margin-top: 1em;
-        }
-        .message-block.ai-loading {
-            align-self: flex-start;
-            opacity: 0.7;
-        }
+        .message-block p { margin: 0; white-space: pre-wrap; }
+        .message-block p + p { margin-top: 1em; }
 
         .input-area-wrapper {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
+            position: absolute; bottom: 0; left: 0; right: 0;
             padding: 2rem 1rem;
             background: linear-gradient(to top, var(--bg-main) 50%, transparent);
+            pointer-events: none; /* градиент не ловит события прокрутки */
         }
-        
         .input-area {
-            max-width: 800px;
-            margin: 0 auto;
-            position: relative;
-            display: flex;
-            align-items: flex-end;
+            max-width: 800px; margin: 0 auto; position: relative;
+            display: flex; align-items: flex-end;
             background-color: var(--bg-input);
             border: 1px solid var(--bg-input-border);
-            border-radius: 12px;
-            padding: 0.75rem;
+            border-radius: 12px; padding: 0.75rem;
+            pointer-events: all; /* вернуть интерактивность полю ввода */
         }
 
         #user-input {
-            flex-grow: 1;
-            background-color: transparent;
-            color: var(--text-primary);
-            border: none;
-            padding: 0.25rem;
-            font-size: 1rem;
-            resize: none;
-            min-height: 28px;
-            outline: none;
+            flex-grow: 1; background: transparent; color: var(--text-primary);
+            border: none; padding: 0.25rem; font-size: 1rem;
+            resize: none; min-height: 28px; outline: none;
         }
         #user-input::placeholder { color: var(--text-secondary); }
 
         #send-btn {
-            position: static;
-            flex-shrink: 0;
-            margin-left: 0.75rem;
-            width: 32px; height: 32px;
-            background: var(--accent-color);
-            border: none;
-            border-radius: 5px;
-            color: white;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            margin-left: 0.75rem; width: 32px; height: 32px;
+            background: var(--accent-color); border: none;
+            border-radius: 5px; color: white; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
         }
         #send-btn:disabled { background-color: #555; cursor: not-allowed; }
 
         #welcome-screen {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100%;
-            text-align: center;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            height: 100%; text-align: center;
         }
         #welcome-screen h1 { font-size: 3rem; }
         #welcome-screen p { color: var(--text-secondary); }
 
         .modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.7);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 1000;
-            opacity: 0;
-            visibility: hidden;
-            transition: opacity 0.3s ease, visibility 0.3s ease;
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7); display: flex;
+            align-items: center; justify-content: center;
+            z-index: 1000; opacity: 0; visibility: hidden;
+            transition: opacity 0.3s, visibility 0.3s;
         }
-        .modal-overlay.visible {
-            opacity: 1;
-            visibility: visible;
-        }
+        .modal-overlay.visible { opacity: 1; visibility: visible; }
         .modal-box {
-            background: var(--bg-main);
-            padding: 2rem;
-            border-radius: 12px;
-            width: 90%;
-            max-width: 400px;
-            border: 1px solid var(--border-color);
-            transform: scale(0.9);
-            transition: transform 0.3s ease;
+            background: var(--bg-main); padding: 2rem; border-radius: 12px;
+            width: 90%; max-width: 400px; border: 1px solid var(--border-color);
+            transform: scale(0.9); transition: transform 0.3s;
         }
-        .modal-overlay.visible .modal-box {
-            transform: scale(1);
-        }
-        .modal-box h3 {
-            margin-bottom: 0.5rem;
-        }
-        .modal-box p {
-            margin-bottom: 1.5rem;
-            color: var(--text-secondary);
-        }
+        .modal-overlay.visible .modal-box { transform: scale(1); }
+        .modal-box h3 { margin-bottom: 0.5rem; }
+        .modal-box p { margin-bottom: 1.5rem; color: var(--text-secondary); }
         .modal-input {
-            width: 100%;
-            padding: 0.75rem;
-            background-color: var(--bg-input);
-            border: 1px solid var(--bg-input-border);
-            border-radius: 8px;
-            color: var(--text-primary);
-            margin-bottom: 1.5rem;
+            width: 100%; padding: 0.75rem;
+            background: var(--bg-input); border: 1px solid var(--bg-input-border);
+            border-radius: 8px; color: var(--text-primary); margin-bottom: 1.5rem;
         }
-        .modal-actions {
-            display: flex;
-            justify-content: flex-end;
-            gap: 1rem;
-        }
+        .modal-actions { display: flex; justify-content: flex-end; gap: 1rem; }
         .modal-actions button {
-            padding: 0.6rem 1.2rem;
-            border-radius: 8px;
-            border: none;
-            cursor: pointer;
-            font-weight: bold;
+            padding: 0.6rem 1.2rem; border-radius: 8px; border: none;
+            cursor: pointer; font-weight: bold;
         }
-        .modal-btn-confirm {
-            background-color: var(--accent-color);
-            color: white;
-        }
-        .modal-btn-cancel {
-            background-color: var(--bg-input);
-            color: var(--text-primary);
-        }
+        .modal-btn-confirm { background: var(--accent-color); color: white; }
+        .modal-btn-cancel  { background: var(--bg-input); color: var(--text-primary); }
     </style>
 </head>
 <body>
 
     <button class="sidebar-toggle" id="show-sidebar-btn"><i class="bi bi-layout-sidebar-inset"></i></button>
-
     <aside class="sidebar">
         <div class="sidebar-header">
             <button class="new-chat-btn" id="new-chat-btn"><i class="bi bi-plus-lg"></i> Новый чат</button>
@@ -378,43 +218,32 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-    let currentChatId = null;
-    let isSending = false;
-
-    const chatListEl = document.getElementById('chat-list');
-    const chatContainerEl = document.getElementById('chat-container');
-    const welcomeScreenEl = document.getElementById('welcome-screen');
-    const userInputEl = document.getElementById('user-input');
-    const sendBtn = document.getElementById('send-btn');
-    const newChatBtn = document.getElementById('new-chat-btn');
-    const logoutBtn = document.getElementById('logout-btn');
-    const hideSidebarBtn = document.getElementById('hide-sidebar-btn');
-    const showSidebarBtn = document.getElementById('show-sidebar-btn');
-    const bodyEl = document.body;
-
-    const modal = {
-        overlay: document.getElementById('custom-modal'),
-        title: document.getElementById('modal-title'),
-        message: document.getElementById('modal-message'),
-        input: document.getElementById('modal-input'),
-        confirmBtn: document.getElementById('modal-confirm-btn'),
-        cancelBtn: document.getElementById('modal-cancel-btn'),
-    };
+    let currentChatId = null, isSending = false;
+    const chatListEl = document.getElementById('chat-list'),
+          chatContainerEl = document.getElementById('chat-container'),
+          welcomeScreenEl = document.getElementById('welcome-screen'),
+          userInputEl = document.getElementById('user-input'),
+          sendBtn = document.getElementById('send-btn'),
+          newChatBtn = document.getElementById('new-chat-btn'),
+          logoutBtn = document.getElementById('logout-btn'),
+          hideSidebarBtn = document.getElementById('hide-sidebar-btn'),
+          showSidebarBtn = document.getElementById('show-sidebar-btn'),
+          bodyEl = document.body,
+          modal = {
+            overlay: document.getElementById('custom-modal'),
+            title: document.getElementById('modal-title'),
+            message: document.getElementById('modal-message'),
+            input: document.getElementById('modal-input'),
+            confirmBtn: document.getElementById('modal-confirm-btn'),
+            cancelBtn: document.getElementById('modal-cancel-btn'),
+          };
 
     const api = {
-        getChats: () => fetch('/mossaassistant/api/chats').then(res => res.json()),
-        getMessages: (chatId) => fetch(`/mossaassistant/api/chats/${chatId}/messages`).then(res => res.json()),
-        sendMessage: (message, chatId) => fetch('/mossaassistant/api/chat', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user_message: message, chat_id: chatId })
-        }).then(res => res.json()),
-        renameChat: (chatId, newTitle) => fetch(`/mossaassistant/api/chats/${chatId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ new_title: newTitle })
-        }),
-        deleteChat: (chatId) => fetch(`/mossaassistant/api/chats/${chatId}`, { method: 'DELETE' })
+        getChats:    () => fetch('/mossaassistant/api/chats').then(r=>r.json()),
+        getMessages:(id)=> fetch(`/mossaassistant/api/chats/${id}/messages`).then(r=>r.json()),
+        sendMessage:(m,id)=> fetch('/mossaassistant/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_message:m,chat_id:id})}).then(r=>r.json()),
+        renameChat:(id,t)=> fetch(`/mossaassistant/api/chats/${id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({new_title:t})}),
+        deleteChat:(id)=> fetch(`/mossaassistant/api/chats/${id}`,{method:'DELETE'})
     };
 
     const scrollToBottom = () => {
@@ -423,162 +252,121 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 0);
     };
 
-    const showModal = ({ title, message, showInput = false, inputValue = '', confirmText = 'OK' }) => {
-        return new Promise((resolve) => {
+    const showModal = ({ title, message, showInput=false, inputValue='', confirmText='OK' }) => {
+        return new Promise(resolve => {
             modal.title.textContent = title;
             modal.message.textContent = message;
-            modal.confirmBtn.textContent = confirmText;
             modal.input.style.display = showInput ? 'block' : 'none';
             modal.input.value = inputValue;
+            modal.confirmBtn.textContent = confirmText;
             modal.overlay.classList.add('visible');
-
-            const close = (value) => {
+            const close = (val) => {
                 modal.overlay.classList.remove('visible');
-                modal.confirmBtn.onclick = null;
-                modal.cancelBtn.onclick = null;
-                modal.overlay.onclick = null;
-                resolve(value);
+                modal.confirmBtn.onclick = modal.cancelBtn.onclick = modal.overlay.onclick = null;
+                resolve(val);
             };
-
             modal.confirmBtn.onclick = () => close(showInput ? modal.input.value : true);
             modal.cancelBtn.onclick = () => close(null);
-            modal.overlay.onclick = (e) => {
-                if (e.target === modal.overlay) close(null);
-            };
+            modal.overlay.onclick = e => { if(e.target===modal.overlay) close(null); };
         });
     };
 
-    const renderChatList = (chats) => {
+    const renderChatList = chats => {
         chatListEl.innerHTML = '';
-        chats.forEach(chat => {
+        chats.forEach(c => {
             const li = document.createElement('li');
             li.className = 'chat-list-item';
-            li.dataset.chatId = chat.id;
-            if (chat.id === currentChatId) {
-                li.classList.add('active');
-            }
+            li.dataset.chatId = c.id;
+            if (c.id === currentChatId) li.classList.add('active');
             li.innerHTML = `
-                <span class="chat-title">${chat.title}</span>
+                <span class="chat-title">${c.title}</span>
                 <div class="chat-actions">
-                    <button class="rename-btn" title="Переименовать"><i class="bi bi-pencil"></i></button>
-                    <button class="delete-btn" title="Удалить"><i class="bi bi-trash"></i></button>
-                </div>
-            `;
-            chatListEl.appendChild(li);
+                  <button class="rename-btn" title="Переименовать"><i class="bi bi-pencil"></i></button>
+                  <button class="delete-btn" title="Удалить"><i class="bi bi-trash"></i></button>
+                </div>`;
+            chatListEl.append(li);
         });
     };
 
-    const renderMessages = (messages) => {
-        chatContainerEl.innerHTML = '';
-        let lastRole = null;
-        messages.forEach(msg => {
-            const isConsecutive = msg.role === lastRole;
-            addMessageToUI(msg.content, msg.role, isConsecutive);
-            lastRole = msg.role;
-        });
+    const addMessageToUI = (content, role, isConsec=false) => {
+        const block = document.createElement('div');
+        block.className = `message-block ${role}` + (isConsec ? ' consecutive' : '');
+        if(role==='user' || role==='ai-loading'){
+            block.textContent = content;
+        } else {
+            content.split(/\n\s*\n/).forEach(pTxt=>{
+                if(pTxt.trim()){
+                    const p=document.createElement('p');
+                    p.textContent=pTxt;
+                    block.appendChild(p);
+                }
+            });
+        }
+        if(role==='ai-loading') block.classList.remove('ai');
+        chatContainerEl.appendChild(block);
         scrollToBottom();
     };
 
-    const addMessageToUI = (content, role, isConsecutive = false) => {
-        const messageBlock = document.createElement('div');
-        messageBlock.className = `message-block ${role}`;
-        if (isConsecutive) {
-            messageBlock.classList.add('consecutive');
-        }
-
-        if (role === 'user' || role === 'ai-loading') {
-            messageBlock.textContent = content;
-        } else {
-            const paragraphs = content.split(/\n\s*\n/).filter(p => p.trim() !== '');
-            paragraphs.forEach((paraText) => {
-                const p = document.createElement('p');
-                p.textContent = paraText;
-                messageBlock.appendChild(p);
-            });
-        }
-        
-        if (role === 'ai-loading') {
-            messageBlock.classList.remove('ai');
-        }
-
-        chatContainerEl.appendChild(messageBlock);
+    const renderMessages = msgs => {
+        chatContainerEl.innerHTML = '';
+        let lastRole = null;
+        msgs.forEach(m => {
+            addMessageToUI(m.content, m.role, m.role===lastRole);
+            lastRole = m.role;
+        });
         scrollToBottom();
     };
 
     const loadChats = async () => {
-        try {
-            const data = await api.getChats();
-            renderChatList(data.chats || []);
-        } catch (error) {
-            console.error("Ошибка загрузки чатов:", error);
-        }
+        try { const d = await api.getChats(); renderChatList(d.chats||[]); }
+        catch(e){ console.error("Ошибка:",e); }
     };
 
-    const selectChat = async (chatId) => {
-        if (isSending) return;
-        currentChatId = chatId;
+    const selectChat = async id => {
+        if(isSending) return;
+        currentChatId = id;
         chatContainerEl.innerHTML = '<p>Загрузка сообщений...</p>';
         welcomeScreenEl.style.display = 'none';
-        chatContainerEl.style.display = 'block';
-        
-        document.querySelectorAll('.chat-list-item').forEach(el => el.classList.remove('active'));
-        document.querySelector(`.chat-list-item[data-chat-id='${chatId}']`)?.classList.add('active');
-
+        chatContainerEl.style.display = 'flex';  // <-- flex вместо block
+        document.querySelectorAll('.chat-list-item').forEach(el=>el.classList.remove('active'));
+        document.querySelector(`.chat-list-item[data-chat-id='${id}']`)?.classList.add('active');
         try {
-            const data = await api.getMessages(chatId);
-            renderMessages(data.messages || []);
-        } catch (error) {
-            console.error("Ошибка загрузки сообщений:", error);
+            const d = await api.getMessages(id);
+            renderMessages(d.messages||[]);
+        } catch(e){
+            console.error(e);
             chatContainerEl.innerHTML = '<p class="text-danger">Ошибка загрузки чата.</p>';
         }
     };
 
     const handleSendMessage = async () => {
-        const message = userInputEl.value.trim();
-        if (!message || isSending) return;
-
-        isSending = true;
-        sendBtn.disabled = true;
-        welcomeScreenEl.style.display = 'none';
-        chatContainerEl.style.display = 'block';
-
-        const lastMessageBlock = chatContainerEl.lastElementChild;
-        const isConsecutiveUserMessage = lastMessageBlock && lastMessageBlock.classList.contains('user');
-        addMessageToUI(message, 'user', isConsecutiveUserMessage);
-        
-        userInputEl.value = '';
-        adjustTextareaHeight();
+        const msg = userInputEl.value.trim();
+        if(!msg||isSending) return;
+        isSending=true; sendBtn.disabled=true;
+        welcomeScreenEl.style.display='none';
+        chatContainerEl.style.display = 'flex';  // <-- тоже flex
+        const last = chatContainerEl.lastElementChild;
+        addMessageToUI(msg, 'user', last?.classList.contains('user'));
+        userInputEl.value=''; userInputEl.style.height='auto';
         addMessageToUI('Думаю...', 'ai-loading', false);
-
         try {
-            const response = await api.sendMessage(message, currentChatId);
-            
-            const loadingIndicator = document.querySelector('.message-block.ai-loading');
-            if (loadingIndicator) {
-                loadingIndicator.remove();
-            }
-
-            if (response.detail) throw new Error(response.detail);
-
-            const lastMessageBlockAfterLoading = chatContainerEl.lastElementChild;
-            const isConsecutiveAIMessage = lastMessageBlockAfterLoading && lastMessageBlockAfterLoading.classList.contains('ai');
-            addMessageToUI(response.ai_response, 'ai', isConsecutiveAIMessage);
-            
-            if (response.is_new_chat) {
-                currentChatId = response.chat_id;
+            const res = await api.sendMessage(msg, currentChatId);
+            document.querySelector('.ai-loading')?.remove();
+            if(res.detail) throw new Error(res.detail);
+            const lastAfter = chatContainerEl.lastElementChild;
+            addMessageToUI(res.ai_response, 'ai', lastAfter?.classList.contains('ai'));
+            if(res.is_new_chat){
+                currentChatId = res.chat_id;
                 await loadChats();
                 document.querySelector(`.chat-list-item[data-chat-id='${currentChatId}']`)?.classList.add('active');
             }
-        } catch (error) {
-            console.error("Ошибка отправки сообщения:", error);
-            const loadingIndicator = document.querySelector('.message-block.ai-loading');
-            if (loadingIndicator) {
-                loadingIndicator.remove();
-            }
-            addMessageToUI(`Ошибка: ${error.message}`, 'ai', false);
+        } catch(e){
+            console.error(e);
+            document.querySelector('.ai-loading')?.remove();
+            addMessageToUI(`Ошибка: ${e.message}`, 'ai', false);
         } finally {
             isSending = false;
-            sendBtn.disabled = userInputEl.value.trim() === '';
+            sendBtn.disabled = userInputEl.value.trim()==='';
         }
     };
 
@@ -590,77 +378,50 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.chat-list-item').forEach(el => el.classList.remove('active'));
     };
 
-    const adjustTextareaHeight = () => {
-        userInputEl.style.height = 'auto';
-        userInputEl.style.height = `${userInputEl.scrollHeight}px`;
-    };
-
     newChatBtn.addEventListener('click', startNewChat);
 
-    chatListEl.addEventListener('click', async (e) => {
-        const chatListItem = e.target.closest('.chat-list-item');
-        if (!chatListItem) return;
-
-        const targetChatId = parseInt(chatListItem.dataset.chatId);
-
-        if (e.target.closest('.rename-btn')) {
+    chatListEl.addEventListener('click', async e => {
+        const item = e.target.closest('.chat-list-item');
+        if(!item) return;
+        const id = +item.dataset.chatId;
+        if(e.target.closest('.rename-btn')){
             e.stopPropagation();
-            const currentTitle = chatListItem.querySelector('.chat-title').textContent;
-            const newTitle = await showModal({
-                title: 'Переименовать чат',
-                message: 'Введите новое название для этого чата.',
-                showInput: true,
-                inputValue: currentTitle,
-                confirmText: 'Сохранить'
-            });
-            if (newTitle && newTitle.trim() !== currentTitle) {
-                api.renameChat(targetChatId, newTitle.trim()).then(res => {
-                    if (res.ok) loadChats();
-                });
+            const old = item.querySelector('.chat-title').textContent;
+            const nw = await showModal({ title:'Переименовать чат', message:'Введите новое название', showInput:true, inputValue:old, confirmText:'Сохранить' });
+            if(nw && nw.trim()!==old){
+                api.renameChat(id, nw.trim()).then(r=>r.ok && loadChats());
             }
-        } else if (e.target.closest('.delete-btn')) {
+        } else if(e.target.closest('.delete-btn')){
             e.stopPropagation();
-            const confirmed = await showModal({
-                title: 'Удалить чат?',
-                message: 'Вы уверены, что хотите удалить этот чат? Это действие необратимо.',
-                confirmText: 'Удалить'
+            const ok = await showModal({ title:'Удалить чат?', message:'Это действие необратимо', confirmText:'Удалить' });
+            if(ok) api.deleteChat(id).then(r=>{
+                if(r.ok){
+                    if(currentChatId===id) startNewChat();
+                    loadChats();
+                }
             });
-            if (confirmed) {
-                api.deleteChat(targetChatId).then(res => {
-                    if (res.ok) {
-                        if (currentChatId === targetChatId) startNewChat();
-                        loadChats();
-                    }
-                });
-            }
         } else {
-            selectChat(targetChatId);
+            selectChat(id);
         }
     });
 
     sendBtn.addEventListener('click', handleSendMessage);
-    userInputEl.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            handleSendMessage();
-        }
+    userInputEl.addEventListener('keydown', e => {
+        if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); handleSendMessage(); }
     });
-
     userInputEl.addEventListener('input', () => {
-        sendBtn.disabled = userInputEl.value.trim() === '';
-        adjustTextareaHeight();
+        sendBtn.disabled = userInputEl.value.trim()==='';
+        userInputEl.style.height = 'auto';
+        userInputEl.style.height = `${userInputEl.scrollHeight}px`;
     });
 
-    logoutBtn.addEventListener('click', async () => {
-        const form = document.createElement('form');
-        form.method = 'POST';
-        form.action = '/mossaassistant/logout';
-        document.body.appendChild(form);
-        form.submit();
+    logoutBtn.addEventListener('click', () => {
+        const f = document.createElement('form');
+        f.method='POST'; f.action='/mossaassistant/logout';
+        document.body.appendChild(f); f.submit();
     });
-
-    hideSidebarBtn.addEventListener('click', () => bodyEl.classList.add('sidebar-collapsed'));
-    showSidebarBtn.addEventListener('click', () => bodyEl.classList.remove('sidebar-collapsed'));
+    hideSidebarBtn.addEventListener('click', ()=>bodyEl.classList.add('sidebar-collapsed'));
+    showSidebarBtn.addEventListener('click', ()=>bodyEl.classList.remove('sidebar-collapsed'));
 
     loadChats();
     startNewChat();
