@@ -15,11 +15,9 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
-# --- Импорты для API ---
 import openai
 import google.generativeai as genai
 
-# --- НОВЫЕ ИМПОРТЫ ДЛЯ RAG (БАЗЫ ЗНАНИЙ) ---
 import chromadb
 from langchain_community.vectorstores import Chroma
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -31,13 +29,11 @@ from langchain_community.document_loaders import (
 )
 from langchain_openai import OpenAIEmbeddings
 
-# --- Общие настройки FastAPI ---
 app = FastAPI()
 security = HTTPBasic()
 templates = Jinja2Templates(directory="templates")
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# --- Pydantic Модели ---
 class ChatRequest(BaseModel):
     user_message: str
 
@@ -55,12 +51,10 @@ class UserCreate(BaseModel):
 class ChangelogEntry(BaseModel):
     content: str
 
-# НОВАЯ МОДЕЛЬ ДЛЯ ОБНОВЛЕНИЯ ТЕМЫ
 class ThemeUpdateRequest(BaseModel):
     theme: str
 
 
-# --- Пути к файлам и папкам ---
 MODELS_LIST_FILE = "models_list.txt"
 CURRENT_MODEL_FILE = "current_model.txt"
 PROMPT_NIKOLAI_FILE = "prompt.txt"
@@ -72,7 +66,6 @@ DOCS_DIR = "documents"
 DB_DIR = "chroma_db"
 USERS_DB_FILE = "users.db"
 
-# --- Получение всех ключей из переменных окружения ---
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 B24_WEBHOOK_URL_FOR_UPDATE = os.getenv("B24_WEBHOOK_URL_FOR_UPDATE")
@@ -80,14 +73,12 @@ B24_SECRET_TOKEN = os.getenv("B24_SECRET_TOKEN")
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin")
 
-# --- Инициализация клиентов API и RAG ---
 openai_client = openai.OpenAI(api_key=OPENAI_API_KEY)
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 else:
     print("WARNING: GEMINI_API_KEY не найден.")
 
-# --- RAG: База Знаний ---
 os.makedirs(DOCS_DIR, exist_ok=True)
 os.makedirs(DB_DIR, exist_ok=True)
 
@@ -116,7 +107,6 @@ def load_and_process_document(file_path: str):
     else:
         print(f"WARNING: Неподдерживаемый формат файла: {file_path}")
 
-# --- Функции для загрузки/сохранения состояния RAG ---
 def load_rag_setting(file_path: str):
     try:
         with open(file_path, "r") as f:
@@ -128,7 +118,6 @@ def save_rag_setting(file_path: str, value: bool):
     with open(file_path, "w") as f:
         f.write(str(value).lower())
 
-# --- Функции для работы с базой данных ---
 def get_db_connection():
     conn = sqlite3.connect(USERS_DB_FILE)
     conn.row_factory = sqlite3.Row
@@ -145,7 +134,6 @@ def initialize_database():
             hashed_password TEXT NOT NULL
         )
     """)
-    # ДОБАВЛЕНИЕ КОЛОНКИ ДЛЯ ТЕМЫ
     try:
         cursor.execute("ALTER TABLE users ADD COLUMN theme TEXT DEFAULT 'dark'")
         print("INFO: Колонка 'theme' успешно добавлена в таблицу 'users'.")
@@ -308,7 +296,6 @@ def get_ai_response(model_name: str, system_prompt_content: str, user_query: str
         raise ValueError(f"Ошибка: Неизвестный провайдер для модели '{model_name}'.")
 
 
-# --- Админ-панель ---
 @app.get("/", response_class=HTMLResponse)
 async def read_admin_ui(request: Request, username: str = Depends(get_current_admin_username)):
     default_models = ["o4-mini-2025-04-16", "gemini-2.5-pro"]
@@ -385,7 +372,6 @@ async def save_mossa_settings(username: str = Depends(get_current_admin_username
     subprocess.run(["systemctl", "restart", "bitrix-gpt.service"])
     return {"status": "ok", "message": "Настройки для 'Мосса Ассистента' сохранены."}
 
-# --- CRUD API ДЛЯ ЖУРНАЛА ИЗМЕНЕНИЙ ---
 @app.get("/api/changelog", response_class=JSONResponse)
 async def get_changelog(username: str = Depends(get_current_admin_username)):
     conn = get_db_connection()
@@ -417,7 +403,6 @@ async def delete_changelog_entry(entry_id: int, username: str = Depends(get_curr
     conn.close()
     return {"status": "ok", "message": "Запись удалена."}
 
-# --- ОСТАЛЬНЫЕ API ---
 @app.post("/api/chat")
 async def handle_chat(chat_request: ChatRequest, username: str = Depends(get_current_admin_username)):
     try:
@@ -470,7 +455,6 @@ async def remove_user(user_id: int, username: str = Depends(get_current_admin_us
     delete_user(user_id)
     return {"message": f"Пользователь ID {user_id} успешно удален."}
 
-# --- Логика Битрикс24 ---
 def get_lead_data_from_b24(lead_id):
     print(f"DEBUG: Получение данных лида {lead_id} из Битрикс24...")
     if not B24_WEBHOOK_URL_FOR_UPDATE: return None
@@ -535,7 +519,6 @@ async def b24_hook(req: Request, background_tasks: BackgroundTasks):
     print(f"DEBUG: Задача для лида {lead_id} добавлена в фон. Мгновенно отвечаем Битрикс24.")
     return {"status": "ok, task accepted"}
 
-# --- Мосса Ассистент ---
 async def get_current_mossa_user(request: Request):
     session_token = request.cookies.get("mossa_session")
     login_url = "/mossaassistant/login"
@@ -744,7 +727,6 @@ async def delete_chat(chat_id: int, user: dict = Depends(get_current_mossa_user)
     conn.close()
     return {"message": "Чат успешно удален"}
 
-# НОВЫЙ ЭНДПОИНТ ДЛЯ СОХРАНЕНИЯ ТЕМЫ
 @app.put("/mossaassistant/api/user/theme", response_class=JSONResponse)
 async def update_user_theme(
     theme_request: ThemeUpdateRequest,
